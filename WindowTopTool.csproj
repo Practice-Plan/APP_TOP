@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>12</LangVersion>
+    <ApplicationIcon>icon.ico</ApplicationIcon>
+    <AssemblyName>WindowTopTool</AssemblyName>
+    <Version>0.0.3</Version>
+    <Authors>wang.station</Authors>
+    <Product>Window Top Tool</Product>
+    <Description>A window management tool for pinning windows to top</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Localization\*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <!--
+    Portable build: pass -p:Portable=true to drop an empty
+    WindowTopTool.portable marker file next to the output assembly. At
+    runtime the marker switches the app into self-contained mode (config
+    and logs stored next to the exe, PPC disabled). Without the property
+    the build produces the normal (installed) distribution, and any marker
+    left by a previous portable build is removed so the output always
+    reflects the requested configuration.
+  -->
+  <Target Name="CreatePortableMarker"
+          AfterTargets="Build"
+          Condition="'$(Portable)' == 'true'">
+    <Touch Files="$(TargetDir)WindowTopTool.portable" AlwaysCreate="true" />
+    <Message Importance="High" Text="Portable marker created at $(TargetDir)WindowTopTool.portable" />
+  </Target>
+  <Target Name="RemovePortableMarker"
+          AfterTargets="Build"
+          Condition="'$(Portable)' != 'true'">
+    <Delete Files="$(TargetDir)WindowTopTool.portable" />
+  </Target>
+  <Target Name="CreatePortableMarkerOnPublish"
+          AfterTargets="Publish"
+          Condition="'$(Portable)' == 'true'">
+    <Touch Files="$(PublishDir)WindowTopTool.portable" AlwaysCreate="true" />
+    <Message Importance="High" Text="Portable marker created at $(PublishDir)WindowTopTool.portable" />
+  </Target>
+
+</Project>
