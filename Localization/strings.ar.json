@@ -58,7 +58,7 @@
   "Settings_SaveFailedBody": "فشل حفظ الإعدادات:\n\n{0}",
   "Settings_LanguageLabel": "اللغة",
 
-  "About_Title": "Window Top Tool  v0.0.3",
+  "About_Title": "Window Top Tool  v0.0.4",
   "About_Subtitle": "أداة خفيفة لتثبيت النوافذ",
   "About_FeaturesHeader": "الميزات",
   "About_Feature_Pin_Name": "تثبيت النافذة",
@@ -83,6 +83,9 @@
 
   "StateProtector_Minimized": "مصغّرة",
   "StateProtector_Fullscreen": "ملء الشاشة",
+
+  "Ppc_ConnectionFailedTitle": "فشل اتصال PPC",
+  "Ppc_ConnectionFailedBody": "تعذر الاتصال بخادم PPC على {0}:{1}، كما فشلت المحاولة التلقائية لتشغيل PPC في الطرفية.\n\nيرجى التحقق من تثبيت PPC ومحاولة تشغيله يدويًا.",
 
   "Common_Unknown": "غير معروف"
 }

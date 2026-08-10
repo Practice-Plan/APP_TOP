@@ -86,14 +86,14 @@ namespace WindowTopTool
                     // the corresponding PPC error code for diagnostics.
                     if (error == 5) // ERROR_ACCESS_DENIED
                     {
-                        Debug.WriteLine("权限不足：目标窗口可能属于更高权限的进程，请以管理员身份运行本工具");
+                        Debug.WriteLine("Access denied: the target window may belong to a higher-privilege process. Run this tool as administrator.");
                         AppLogger.Error(
                             $"SetWindowPos denied for handle {hWnd} (Win32 error 5: access denied)",
                             PpcErrorCodes.ErrorWindowPinFailed);
                     }
                     else if (error == 1400) // ERROR_INVALID_WINDOW_HANDLE
                     {
-                        Debug.WriteLine("窗口句柄无效：目标窗口可能已关闭");
+                        Debug.WriteLine("Invalid window handle: the target window may have been closed.");
                         AppLogger.Warn(
                             $"SetWindowPos failed for handle {hWnd} (Win32 error 1400: invalid handle)",
                             PpcErrorCodes.ErrorWindowNotFound);

@@ -28,7 +28,7 @@ namespace WindowTopTool
         public const string MinPpcVersion = "0.0.6";
 
         /// <summary>Highest PPC version this connector can talk to.</summary>
-        public const string MaxPpcVersion = "0.0.6";
+        public const string MaxPpcVersion = "0.0.7";
 
         /// <summary>Default PPC listen address.</summary>
         public const string DefaultHost = "127.0.0.1";
@@ -304,14 +304,19 @@ namespace WindowTopTool
 
         /// <summary>
         /// Attempt to start the PPC server when it appears to be unreachable.
+        /// PPC is launched inside a visible terminal window (cmd.exe /K) so the
+        /// user can observe server startup output and any error messages; the
+        /// terminal is kept open even if PPC exits, which makes startup
+        /// failures easy to diagnose.
+        ///
         /// Tries, in order:
         /// <list type="number">
         /// <item><c>ppc</c> / <c>ppc.exe</c> on the system PATH (command line).</item>
         /// <item><c>C:\Program Files\ppc\ppc.exe</c></item>
         /// <item><c>C:\Program Files (x86)\ppc\ppc.exe</c></item>
         /// </list>
-        /// Returns <c>true</c> when a process was launched (or is already
-        /// running); <c>false</c> when no executable could be found.
+        /// Returns <c>true</c> when a process was launched; <c>false</c> when
+        /// no executable could be found or started.
         /// </summary>
         public static bool TryStartPpcServer()
         {
@@ -334,12 +339,19 @@ namespace WindowTopTool
             {
                 try
                 {
+                    // Launch PPC inside a visible terminal window. cmd.exe /K
+                    // runs PPC as a child process and keeps the terminal open,
+                    // so the user can read startup output and any error
+                    // messages even if PPC exits immediately. The candidate
+                    // path is quoted so paths containing spaces (e.g.
+                    // "C:\Program Files\ppc\ppc.exe") are handled correctly.
                     var psi = new ProcessStartInfo
                     {
-                        FileName = candidate,
-                        UseShellExecute = false,
-                        WindowStyle = ProcessWindowStyle.Hidden,
-                        CreateNoWindow = true,
+                        FileName = "cmd.exe",
+                        Arguments = $"/K \"{candidate}\"",
+                        UseShellExecute = true,
+                        WindowStyle = ProcessWindowStyle.Normal,
+                        CreateNoWindow = false,
                     };
 
                     var proc = Process.Start(psi);

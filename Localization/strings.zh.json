@@ -58,7 +58,7 @@
   "Settings_SaveFailedBody": "保存设置失败：\n\n{0}",
   "Settings_LanguageLabel": "语言",
 
-  "About_Title": "Window Top Tool  v0.0.3",
+  "About_Title": "Window Top Tool  v0.0.4",
   "About_Subtitle": "轻量级窗口置顶管理工具",
   "About_FeaturesHeader": "功能说明",
   "About_Feature_Pin_Name": "窗口置顶",
@@ -83,6 +83,9 @@
 
   "StateProtector_Minimized": "最小化",
   "StateProtector_Fullscreen": "全屏",
+
+  "Ppc_ConnectionFailedTitle": "PPC 连接失败",
+  "Ppc_ConnectionFailedBody": "无法连接到 {0}:{1} 的 PPC 服务器，自动在终端启动 PPC 程序的尝试也已失败。\n\n请确认 PPC 已正确安装，并尝试手动启动。",
 
   "Common_Unknown": "未知"
 }

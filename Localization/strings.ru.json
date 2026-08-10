@@ -58,7 +58,7 @@
   "Settings_SaveFailedBody": "Не удалось сохранить параметры:\n\n{0}",
   "Settings_LanguageLabel": "Язык",
 
-  "About_Title": "Window Top Tool  v0.0.3",
+  "About_Title": "Window Top Tool  v0.0.4",
   "About_Subtitle": "Лёгкий инструмент закрепления окон",
   "About_FeaturesHeader": "Возможности",
   "About_Feature_Pin_Name": "Закрепление окна",
@@ -83,6 +83,9 @@
 
   "StateProtector_Minimized": "Свёрнуто",
   "StateProtector_Fullscreen": "Полноэкранный режим",
+
+  "Ppc_ConnectionFailedTitle": "Сбой подключения к PPC",
+  "Ppc_ConnectionFailedBody": "Не удалось подключиться к серверу PPC по адресу {0}:{1}, и автоматическая попытка запуска PPC в терминале также завершилась неудачей.\n\nУбедитесь, что PPC установлен, и попробуйте запустить его вручную.",
 
   "Common_Unknown": "Неизвестно"
 }

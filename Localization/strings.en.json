@@ -58,7 +58,7 @@
   "Settings_SaveFailedBody": "Failed to save settings:\n\n{0}",
   "Settings_LanguageLabel": "Language",
 
-  "About_Title": "Window Top Tool  v0.0.3",
+  "About_Title": "Window Top Tool  v0.0.4",
   "About_Subtitle": "Lightweight window pinning tool",
   "About_FeaturesHeader": "Features",
   "About_Feature_Pin_Name": "Window pinning",
@@ -83,6 +83,9 @@
 
   "StateProtector_Minimized": "Minimized",
   "StateProtector_Fullscreen": "Fullscreen",
+
+  "Ppc_ConnectionFailedTitle": "PPC connection failed",
+  "Ppc_ConnectionFailedBody": "Could not connect to the PPC server at {0}:{1}, and the automatic attempt to start PPC in a terminal also failed.\n\nPlease verify that PPC is installed and try starting it manually.",
 
   "Common_Unknown": "Unknown"
 }

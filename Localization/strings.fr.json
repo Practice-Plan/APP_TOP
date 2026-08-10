@@ -58,7 +58,7 @@
   "Settings_SaveFailedBody": "Échec de l'enregistrement des paramètres :\n\n{0}",
   "Settings_LanguageLabel": "Langue",
 
-  "About_Title": "Window Top Tool  v0.0.3",
+  "About_Title": "Window Top Tool  v0.0.4",
   "About_Subtitle": "Outil léger d'épinglage de fenêtre",
   "About_FeaturesHeader": "Fonctionnalités",
   "About_Feature_Pin_Name": "Épinglage de fenêtre",
@@ -83,6 +83,9 @@
 
   "StateProtector_Minimized": "Réduite",
   "StateProtector_Fullscreen": "Plein écran",
+
+  "Ppc_ConnectionFailedTitle": "Échec de la connexion PPC",
+  "Ppc_ConnectionFailedBody": "Impossible de se connecter au serveur PPC à {0}:{1}, et la tentative de démarrage automatique de PPC dans un terminal a également échoué.\n\nVeuillez vérifier que PPC est installé et essayez de le démarrer manuellement.",
 
   "Common_Unknown": "Inconnu"
 }

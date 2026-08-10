@@ -7,24 +7,29 @@ using System.Windows.Forms;
 namespace WindowTopTool
 {
     /// <summary>
-    /// 鼠标穿透管理器
+    /// Mouse click-through manager.
     ///
-    /// 核心机制：
-    /// 1. WS_EX_TRANSPARENT — 对非活跃置顶窗口自动添加此样式，
-    ///    使单击/悬停事件被操作系统直接传递到下层窗口（零延迟、零闪烁）。
-    /// 2. WH_MOUSE_LL 低级鼠标钩子 — 检测双击模式，当用户在非活跃置顶窗口区域
-    ///    连续两次点击时，激活该窗口（移除 WS_EX_TRANSPARENT 并 SetForegroundWindow）。
-    /// 3. SetWinEventHook(EVENT_SYSTEM_FOREGROUND) — 监听前台窗口变化，
-    ///    当置顶窗口获得前台时移除 WS_EX_TRANSPARENT，
-    ///    当置顶窗口失去前台时重新添加 WS_EX_TRANSPARENT。
+    /// Core mechanism:
+    /// 1. WS_EX_TRANSPARENT — automatically applied to inactive pinned windows
+    ///    so click/hover events are forwarded directly to the window beneath by
+    ///    the OS (zero latency, zero flicker).
+    /// 2. WH_MOUSE_LL low-level mouse hook — detects double-click gestures:
+    ///    when the user clicks twice in a row over an inactive pinned window,
+    ///    that window is activated (WS_EX_TRANSPARENT is removed and
+    ///    SetForegroundWindow is called).
+    /// 3. SetWinEventHook(EVENT_SYSTEM_FOREGROUND) — monitors foreground-window
+    ///    changes: removes WS_EX_TRANSPARENT when a pinned window gains the
+    ///    foreground, and re-adds it when the pinned window loses the foreground.
     ///
-    /// 行为规则：
-    /// - 非活跃置顶窗口：单击穿透到下层窗口，双击激活置顶窗口
-    /// - 活跃置顶窗口：所有鼠标操作正常作用于置顶窗口
+    /// Behavior rules:
+    /// - Inactive pinned window: single click passes through to the window
+    ///   below; double-click activates the pinned window.
+    /// - Active pinned window: all mouse actions apply to the pinned window
+    ///   normally.
     /// </summary>
     public class WindowHookManager : IDisposable
     {
-        // ── 常量 ──────────────────────────────────────────────
+        // ── Constants ─────────────────────────────────────────
 
         private const int WH_MOUSE_LL = 14;
         private const int WM_LBUTTONDOWN = 0x0201;
@@ -32,12 +37,12 @@ namespace WindowTopTool
         private const uint EVENT_SYSTEM_FOREGROUND = 0x0003;
         private const uint WINEVENT_OUTOFCONTEXT = 0x0000;
 
-        /// <summary>双击判定最大间隔（毫秒）</summary>
+        /// <summary>Maximum interval between two clicks to count as a double-click (milliseconds).</summary>
         private const int DOUBLE_CLICK_INTERVAL = 400;
-        /// <summary>双击判定最大位移（像素）</summary>
+        /// <summary>Maximum pixel distance between two clicks to count as a double-click.</summary>
         private const int DOUBLE_CLICK_TOLERANCE = 8;
 
-        // ── 委托与结构体 ──────────────────────────────────────
+        // ── Delegates and structures ──────────────────────────
 
         private delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
         private delegate IntPtr WinEventProcType(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime);
@@ -92,7 +97,7 @@ namespace WindowTopTool
 
         private const int SW_RESTORE = 9;
 
-        // ── 字段 ──────────────────────────────────────────────
+        // ── Fields ────────────────────────────────────────────
 
         private readonly WindowPinManager _pinManager;
         private IntPtr _mouseHookID = IntPtr.Zero;
@@ -101,25 +106,26 @@ namespace WindowTopTool
         private WinEventProcType? _winEventProc;
         private bool _disposed = false;
 
-        // 双击检测状态
+        // Double-click detection state
         private DateTime _lastClickTime = DateTime.MinValue;
         private Point _lastClickPos = Point.Empty;
         private IntPtr _lastClickTargetWindow = IntPtr.Zero;
 
-        /// <summary>正在激活的窗口句柄，防止前台钩子过早重新添加穿透样式</summary>
+        /// <summary>Handle of the window currently being activated, used to prevent the foreground hook from re-adding the click-through style prematurely.</summary>
         private IntPtr _activatingWindow = IntPtr.Zero;
 
         /// <summary>
-        /// 激活重试计数器。当延迟刷新检测到置顶窗口仍未获得前台时，
-        /// 最多重试 <see cref="MAX_ACTIVATION_RETRIES"/> 次。
+        /// Activation retry counter. When the delayed refresh detects that the
+        /// pinned window still has not gained the foreground, it retries
+        /// activation up to <see cref="MAX_ACTIVATION_RETRIES"/> times.
         /// </summary>
         private int _activationRetryCount;
         private const int MAX_ACTIVATION_RETRIES = 3;
 
-        /// <summary>延迟刷新定时器，确保前台变化后正确更新穿透状态</summary>
+        /// <summary>Delayed refresh timer — ensures the click-through state is updated correctly after a foreground change takes effect.</summary>
         private System.Windows.Forms.Timer? _delayedRefreshTimer;
 
-        // ── 构造与初始化 ────────────────────────────────────
+        // ── Construction and initialization ──────────────────
 
         public WindowHookManager(WindowPinManager pinManager)
         {
@@ -132,7 +138,7 @@ namespace WindowTopTool
 
         private void InstallHooks()
         {
-            // 安装低级鼠标钩子
+            // Install the low-level mouse hook.
             _mouseProc = MouseHookCallback;
             using (var process = Process.GetCurrentProcess())
             using (var module = process.MainModule)
@@ -141,13 +147,13 @@ namespace WindowTopTool
             }
             if (_mouseHookID == IntPtr.Zero)
             {
-                Debug.WriteLine("鼠标低级钩子安装失败");
+                Debug.WriteLine("Failed to install low-level mouse hook");
                 AppLogger.Error(
                     "Failed to install low-level mouse hook (WH_MOUSE_LL)",
                     PpcErrorCodes.ErrorHookInstallFailed);
             }
 
-            // 安装前台窗口变化事件钩子
+            // Install the foreground-window change event hook.
             _winEventProc = ForegroundChangedCallback;
             _winEventHook = SetWinEventHook(
                 EVENT_SYSTEM_FOREGROUND,
@@ -159,20 +165,21 @@ namespace WindowTopTool
             );
             if (_winEventHook == IntPtr.Zero)
             {
-                Debug.WriteLine("前台窗口变化事件钩子安装失败");
+                Debug.WriteLine("Failed to install foreground-window change event hook");
                 AppLogger.Error(
                     "Failed to install foreground-window event hook (EVENT_SYSTEM_FOREGROUND)",
                     PpcErrorCodes.ErrorHookInstallFailed);
             }
 
-            // 初始化时更新所有已置顶窗口的穿透状态
+            // Initialize the click-through state of all currently pinned windows.
             UpdateAllPinnedWindowsClickThrough();
         }
 
-        // ── 事件回调 ─────────────────────────────────────────
+        // ── Event callbacks ───────────────────────────────────
 
         /// <summary>
-        /// 低级鼠标钩子回调 — 检测双击模式以激活非活跃置顶窗口
+        /// Low-level mouse hook callback — detects double-click gestures to
+        /// activate an inactive pinned window.
         /// </summary>
         private IntPtr MouseHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
         {
@@ -199,38 +206,41 @@ namespace WindowTopTool
                 }
             }
 
-            // 始终传递，不阻断任何鼠标消息
+            // Always pass through — never block other mouse messages.
             return CallNextHookEx(_mouseHookID, nCode, wParam, lParam);
         }
 
         /// <summary>
-        /// 前台窗口变化回调 — 更新所有置顶窗口的 WS_EX_TRANSPARENT 状态
+        /// Foreground-window change callback — updates the WS_EX_TRANSPARENT
+        /// state of all pinned windows.
         /// </summary>
         private IntPtr ForegroundChangedCallback(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
         {
             if (idObject == 0 && idChild == 0)
             {
-                // 前台窗口已变化，更新所有置顶窗口的穿透状态
+                // Foreground window changed — refresh the click-through state of all pinned windows.
                 UpdateAllPinnedWindowsClickThrough();
             }
             return IntPtr.Zero;
         }
 
-        // ── 双击检测逻辑 ────────────────────────────────────
+        // ── Double-click detection logic ─────────────────────
 
         /// <summary>
-        /// 处理左键按下事件，检测对非活跃置顶窗口的双击。
+        /// Handles a left-button-down event and detects a double-click on an
+        /// inactive pinned window.
         /// </summary>
         /// <returns>
-        /// 当此次点击完成了对置顶窗口的双击并触发了激活时返回 <c>true</c>，
-        /// 调用方应吞掉此鼠标消息以防其传递到下层窗口。
-        /// 其他情况返回 <c>false</c>，消息正常传递。
+        /// <c>true</c> when this click completed a double-click on a pinned
+        /// window and triggered activation; the caller should swallow this
+        /// mouse message to prevent it from reaching the window below.
+        /// Otherwise <c>false</c>, and the message is delivered normally.
         /// </returns>
         private bool HandleLeftButtonDown(Point mousePos)
         {
             var now = DateTime.Now;
 
-            // 查找鼠标位置下的非活跃置顶窗口
+            // Find the inactive pinned window under the cursor.
             var targetWindow = FindPinnedWindowAtPoint(mousePos);
             if (targetWindow == IntPtr.Zero)
             {
@@ -242,7 +252,7 @@ namespace WindowTopTool
             var foreground = NativeMethods.GetForegroundWindow();
             bool isTargetActive = targetWindow == foreground;
 
-            // 如果目标窗口已经是活跃窗口，不需要处理
+            // If the target window is already the active window, nothing to do.
             if (isTargetActive)
             {
                 _lastClickTime = DateTime.MinValue;
@@ -250,7 +260,7 @@ namespace WindowTopTool
                 return false;
             }
 
-            // 检测双击模式：同一窗口、相近位置、时间间隔内
+            // Detect double-click: same window, close position, within the time interval.
             bool isDoubleClick = (now - _lastClickTime).TotalMilliseconds <= DOUBLE_CLICK_INTERVAL
                 && _lastClickTargetWindow == targetWindow
                 && Math.Abs(mousePos.X - _lastClickPos.X) <= DOUBLE_CLICK_TOLERANCE
@@ -258,16 +268,17 @@ namespace WindowTopTool
 
             if (isDoubleClick)
             {
-                // 双击 — 激活置顶窗口
+                // Double-click — activate the pinned window.
                 ActivatePinnedWindow(targetWindow);
                 _lastClickTime = DateTime.MinValue;
                 _lastClickTargetWindow = IntPtr.Zero;
-                // 吞掉此第二次点击，防止下层应用接收到双击而抢夺前台。
+                // Swallow this second click so the underlying application does
+                // not receive a double-click and steal the foreground.
                 return true;
             }
             else
             {
-                // 记录此次点击，等待可能的第二次点击
+                // Record this click and wait for a possible second click.
                 _lastClickTime = now;
                 _lastClickPos = mousePos;
                 _lastClickTargetWindow = targetWindow;
@@ -276,7 +287,8 @@ namespace WindowTopTool
         }
 
         /// <summary>
-        /// 查找鼠标坐标下的非活跃置顶窗口（使用 GetWindowRect 手动检测）
+        /// Finds the inactive pinned window under the given point (using
+        /// GetWindowRect for manual hit-testing).
         /// </summary>
         private IntPtr FindPinnedWindowAtPoint(Point pt)
         {
@@ -284,7 +296,7 @@ namespace WindowTopTool
 
             foreach (var window in _pinManager.PinnedWindows)
             {
-                // 跳过已活跃的窗口
+                // Skip the window that is already in the foreground.
                 if (window.Handle == foreground)
                     continue;
 
@@ -305,54 +317,64 @@ namespace WindowTopTool
         }
 
         /// <summary>
-        /// 激活置顶窗口：移除穿透样式并设为前台
-        /// 关键修复：SetForegroundWindow 是异步的，调用后 GetForegroundWindow 可能仍返回旧窗口，
-        /// 所以不能立即调用 UpdateAllPinnedWindowsClickThrough（否则会重新添加穿透样式）。
-        /// 解决方案：使用 AttachThreadInput 强制前台切换 + 延迟定时器刷新。
+        /// Activates a pinned window: removes the click-through style and sets
+        /// it as the foreground window.
+        ///
+        /// Key fix: SetForegroundWindow is asynchronous — GetForegroundWindow
+        /// may still return the old window right after the call, so
+        /// UpdateAllPinnedWindowsClickThrough must NOT be invoked immediately
+        /// (it would re-add the click-through style).
+        /// Solution: force the foreground switch with AttachThreadInput, then
+        /// refresh the click-through state via a delayed timer.
         /// </summary>
         private void ActivatePinnedWindow(IntPtr hWnd)
         {
             try
             {
-                // 标记正在激活此窗口，防止前台钩子过早重新添加穿透样式
+                // Mark this window as being activated so the foreground hook
+                // does not re-add the click-through style prematurely.
                 _activatingWindow = hWnd;
 
-                // 先移除穿透样式，确保窗口能接收鼠标事件
+                // Remove the click-through style first so the window can receive mouse events.
                 SetWindowTransparent(hWnd, false);
 
-                // 使用 AttachThreadInput 技术强制前台切换
-                // 这能绕过 SetForegroundWindow 的限制（后台进程通常无法设置前台）
+                // Force the foreground switch using AttachThreadInput.
+                // This bypasses the SetForegroundWindow restriction (background
+                // processes normally cannot set the foreground window).
                 ForceSetForegroundWindow(hWnd);
 
-                Debug.WriteLine($"已通过双击激活置顶窗口: {hWnd}");
+                Debug.WriteLine($"Activated pinned window via double-click: {hWnd}");
 
-                // 不立即调用 UpdateAllPinnedWindowsClickThrough
-                // 使用延迟定时器等待前台变化生效后再刷新
+                // Do NOT call UpdateAllPinnedWindowsClickThrough immediately.
+                // Use a delayed timer to wait for the foreground change to take
+                // effect before refreshing.
                 ScheduleDelayedRefresh(150);
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"激活置顶窗口失败: {ex.Message}");
+                Debug.WriteLine($"Failed to activate pinned window: {ex.Message}");
                 _activatingWindow = IntPtr.Zero;
             }
         }
 
         /// <summary>
-        /// 使用 AttachThreadInput 强制设置前台窗口。
+        /// Forces a window to the foreground using AttachThreadInput.
         ///
-        /// 改进点：
-        /// - 先 <see cref="ShowWindow"/> 恢复最小化的窗口，否则 SetForegroundWindow
-        ///   对最小化窗口无效。
-        /// - 同时附加到「当前前台线程」与「目标窗口线程」的输入队列后再调用
-        ///   SetForegroundWindow，绕过前台锁定限制。
-        /// - 调用 <see cref="BringWindowToTop"/> 确保 Z-order 置顶。
-        /// - 在 finally 中解除所有 AttachThreadInput，避免输入队列长期共享。
+        /// Improvements:
+        /// - Call <see cref="ShowWindow"/> first to restore minimized windows;
+        ///   otherwise SetForegroundWindow has no effect on them.
+        /// - Attach to the input queues of BOTH the current foreground thread
+        ///   and the target window's thread before calling
+        ///   SetForegroundWindow, bypassing the foreground-lock restriction.
+        /// - Call <see cref="BringWindowToTop"/> to ensure top Z-order.
+        /// - Detach all AttachThreadInput links in finally so input queues are
+        ///   not shared long-term.
         /// </summary>
         private void ForceSetForegroundWindow(IntPtr hWnd)
         {
             try
             {
-                // 恢复最小化/最大化的窗口，确保能被激活
+                // Restore minimized/maximized windows so they can be activated.
                 NativeMethods.ShowWindow(hWnd, SW_RESTORE);
 
                 var currentThread = GetCurrentThreadId();
@@ -367,7 +389,7 @@ namespace WindowTopTool
                 uint targetThread = 0;
                 GetWindowThreadProcessId(hWnd, out targetThread);
 
-                // 同时附加到前台线程与目标线程的输入队列
+                // Attach to both the foreground thread's and the target thread's input queues.
                 bool attachedToForeground = foregroundThread != 0
                     && foregroundThread != currentThread
                     && foregroundThread != targetThread;
@@ -394,21 +416,24 @@ namespace WindowTopTool
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"ForceSetForegroundWindow 失败: {ex.Message}");
-                // 降级为普通 SetForegroundWindow
+                Debug.WriteLine($"ForceSetForegroundWindow failed: {ex.Message}");
+                // Fall back to a plain SetForegroundWindow.
                 NativeMethods.SetForegroundWindow(hWnd);
             }
         }
 
         /// <summary>
-        /// 延迟刷新穿透状态（等待前台变化生效后执行）。
+        /// Schedules a delayed refresh of the click-through state (executed
+        /// after the foreground change takes effect).
         ///
-        /// 改进点：到达延迟时间后先校验置顶窗口是否真正获得了前台。
-        /// 若未获得（典型情况：第二次双击点击被下层应用抢夺前台），
-        /// 则重试激活，最多 <see cref="MAX_ACTIVATION_RETRIES"/> 次。
-        /// 只有确认前台已切换或重试耗尽后，才清除 <see cref="_activatingWindow"/>
-        /// 并刷新穿透状态，避免过早重新添加 WS_EX_TRANSPARENT 导致置顶窗口
-        /// 「无法活跃」。
+        /// Improvement: once the delay elapses, first verify the pinned window
+        /// actually gained the foreground. If it did not (typical case: the
+        /// second double-click was stolen by the underlying application), retry
+        /// activation up to <see cref="MAX_ACTIVATION_RETRIES"/> times. Only
+        /// clear <see cref="_activatingWindow"/> and refresh the click-through
+        /// state once the foreground has actually switched or the retries are
+        /// exhausted — otherwise WS_EX_TRANSPARENT is re-added too early and
+        /// the pinned window becomes "unable to be activated".
         /// </summary>
         private void ScheduleDelayedRefresh(int delayMs)
         {
@@ -429,9 +454,10 @@ namespace WindowTopTool
                 && foreground != _activatingWindow
                 && _activationRetryCount < MAX_ACTIVATION_RETRIES)
             {
-                // 前台切换未生效（可能被其他应用抢夺），重试激活
+                // Foreground switch did not take effect (possibly stolen by
+                // another application) — retry the activation.
                 _activationRetryCount++;
-                Debug.WriteLine($"置顶窗口激活未生效，重试 ({_activationRetryCount}/{MAX_ACTIVATION_RETRIES})");
+                Debug.WriteLine($"Pinned-window activation did not take effect, retrying ({_activationRetryCount}/{MAX_ACTIVATION_RETRIES})");
                 ForceSetForegroundWindow(_activatingWindow);
                 _delayedRefreshTimer!.Interval = 100;
                 _delayedRefreshTimer.Start();
@@ -443,13 +469,13 @@ namespace WindowTopTool
             UpdateAllPinnedWindowsClickThrough();
         }
 
-        // ── WS_EX_TRANSPARENT 动态管理 ───────────────────────
+        // ── WS_EX_TRANSPARENT dynamic management ─────────────
 
         /// <summary>
-        /// 更新所有置顶窗口的穿透状态：
-        /// - 活跃（前台）置顶窗口 → 移除 WS_EX_TRANSPARENT（正常交互）
-        /// - 非活跃置顶窗口 → 添加 WS_EX_TRANSPARENT（单击穿透）
-        /// - 正在激活中的窗口 → 保持无穿透（等待前台变化生效）
+        /// Updates the click-through state of all pinned windows:
+        /// - Active (foreground) pinned window → remove WS_EX_TRANSPARENT (normal interaction)
+        /// - Inactive pinned window → add WS_EX_TRANSPARENT (single-click pass-through)
+        /// - Window currently being activated → keep click-through off (wait for the foreground change to take effect)
         /// </summary>
         private void UpdateAllPinnedWindowsClickThrough()
         {
@@ -460,7 +486,7 @@ namespace WindowTopTool
                 if (!NativeMethods.IsWindow(window.Handle))
                     continue;
 
-                // 正在激活中的窗口保持无穿透样式
+                // A window being activated keeps the click-through style off.
                 if (window.Handle == _activatingWindow)
                 {
                     SetWindowTransparent(window.Handle, false);
@@ -473,7 +499,7 @@ namespace WindowTopTool
         }
 
         /// <summary>
-        /// 设置或移除窗口的 WS_EX_TRANSPARENT 样式
+        /// Adds or removes the WS_EX_TRANSPARENT style on a window.
         /// </summary>
         private void SetWindowTransparent(IntPtr hWnd, bool transparent)
         {
@@ -495,26 +521,26 @@ namespace WindowTopTool
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"设置窗口穿透样式失败: {ex.Message}");
+                Debug.WriteLine($"Failed to set window click-through style: {ex.Message}");
             }
         }
 
-        // ── 置顶窗口事件处理 ─────────────────────────────────
+        // ── Pinned-window event handling ─────────────────────
 
         private void OnWindowPinned(object? sender, WindowPinEventArgs e)
         {
-            // 新窗口被置顶时，根据当前前台状态设置穿透
+            // When a new window is pinned, set its click-through state based on the current foreground.
             var foreground = NativeMethods.GetForegroundWindow();
             bool shouldBeTransparent = e.Window.Handle != foreground;
             SetWindowTransparent(e.Window.Handle, shouldBeTransparent);
 
-            // 其他已置顶窗口如果不再是前台，确保它们也设为穿透
+            // Ensure any other pinned windows that are no longer in the foreground are also click-through.
             UpdateAllPinnedWindowsClickThrough();
         }
 
         private void OnWindowUnpinned(object? sender, WindowPinEventArgs e)
         {
-            // 窗口被取消置顶时，移除穿透样式恢复正常
+            // When a window is unpinned, remove the click-through style to restore normal behavior.
             SetWindowTransparent(e.Window.Handle, false);
         }
 
@@ -523,23 +549,23 @@ namespace WindowTopTool
             UpdateAllPinnedWindowsClickThrough();
         }
 
-        // ── 公开方法 ────────────────────────────────────────
+        // ── Public methods ────────────────────────────────────
 
         /// <summary>
-        /// 手动刷新所有置顶窗口的穿透状态
+        /// Manually refreshes the click-through state of all pinned windows.
         /// </summary>
         public void RefreshClickThroughState()
         {
             UpdateAllPinnedWindowsClickThrough();
         }
 
-        // ── 资源清理 ─────────────────────────────────────────
+        // ── Resource cleanup ──────────────────────────────────
 
         public void Dispose()
         {
             if (!_disposed)
             {
-                // 移除所有置顶窗口的穿透样式
+                // Remove the click-through style from all pinned windows.
                 foreach (var window in _pinManager.PinnedWindows)
                 {
                     if (NativeMethods.IsWindow(window.Handle))
@@ -572,4 +598,3 @@ namespace WindowTopTool
         }
     }
 }
-

@@ -93,7 +93,7 @@ namespace WindowTopTool
         /// Always sourced from the running assembly version (controlled by
         /// &lt;Version&gt; in the .csproj) so it can never drift from the
         /// actual build version. A stale value previously persisted in
-        /// config.json (e.g. "0.0.2" after a bump to "0.0.3") is ignored:
+        /// config.json (e.g. "0.0.3" after a bump to "0.0.4") is ignored:
         /// the setter is a no-op and the getter returns the authoritative
         /// assembly version. This makes version reporting self-correcting
         /// across upgrades without any manual config edit.
@@ -108,14 +108,14 @@ namespace WindowTopTool
         }
 
         /// <summary>
-        /// The running application's version string (e.g. "0.0.3"), derived
+        /// The running application's version string (e.g. "0.0.4"), derived
         /// once from the entry assembly. Matches &lt;Version&gt; in the .csproj.
         /// </summary>
         public static string AssemblyVersion { get; } = ResolveAssemblyVersion();
 
         /// <summary>
         /// Human-readable application name with version, e.g.
-        /// "Window Top Tool v0.0.3". Single source of truth for the display
+        /// "Window Top Tool v0.0.4". Single source of truth for the display
         /// name shown in the tray tooltip and used in window-title
         /// comparisons to exclude the app's own windows. Always tracks the
         /// assembly version, so it can never go stale.

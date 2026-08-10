@@ -76,7 +76,11 @@ namespace WindowTopTool
         /// synchronous TCP calls. The flow is:
         /// <list type="number">
         /// <item>Connect to PPC. If the server is not running, attempt to
-        ///   start it automatically (PATH → Program Files → Program Files (x86)).</item>
+        ///   start it automatically in a visible terminal
+        ///   (PATH → Program Files → Program Files (x86)).</item>
+        /// <item>If the connection still cannot be established after the
+        ///   terminal auto-start, show a localized warning window so users in
+        ///   any language environment understand the failure.</item>
         /// <item>If a stored hash exists, try AUTH; on failure re-REGISTER.</item>
         /// <item>Otherwise REGISTER to obtain a fresh hash, then AUTH.</item>
         /// <item>Check PPC version compatibility.</item>
@@ -97,6 +101,9 @@ namespace WindowTopTool
 
             System.Threading.ThreadPool.QueueUserWorkItem(_ =>
             {
+                // True only when both the direct connection AND the terminal
+                // auto-start failed — the case that warrants a warning window.
+                bool connectionAndStartupFailed = false;
                 try
                 {
                     AppLogger.Info($"Connecting to PPC at {config.PpcHost}:{config.PpcPort}");
@@ -108,9 +115,10 @@ namespace WindowTopTool
                     }
                     catch (PpcException) when (!AppConfig.IsPpcConfigDirectorySet)
                     {
-                        // PPC server is not running — try to start it.
+                        // PPC server is not running — try to start it in a
+                        // visible terminal so the user can see its output.
                         AppLogger.Warn(
-                            "PPC server not reachable; attempting auto-start",
+                            "PPC server not reachable; attempting auto-start in terminal",
                             PpcErrorCodes.WarningPpcReconnect);
                         if (PpcConnector.TryStartPpcServer())
                         {
@@ -118,6 +126,10 @@ namespace WindowTopTool
                         }
                         else
                         {
+                            // Both the direct connection and the terminal
+                            // auto-start failed — flag this so the outer
+                            // handler shows a localized warning window.
+                            connectionAndStartupFailed = true;
                             throw;
                         }
                     }
@@ -174,6 +186,10 @@ namespace WindowTopTool
                         "PPC connection failed",
                         ex,
                         ex.ErrorCode ?? PpcErrorCodes.ErrorPpcNotRunning);
+                    if (connectionAndStartupFailed)
+                    {
+                        ShowPpcConnectionFailedWarning(config.PpcHost, config.PpcPort);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -183,6 +199,47 @@ namespace WindowTopTool
                         PpcErrorCodes.ErrorPpcNotRunning);
                 }
             });
+        }
+
+        /// <summary>
+        /// Shows a localized warning window explaining that the PPC connection
+        /// and the automatic terminal start both failed. The text is resolved
+        /// via <see cref="LocalizationManager"/> so it follows the active
+        /// language (English/Chinese/French/Russian/Arabic) and, for Arabic,
+        /// the message box is shown right-to-left. Marshalled to the UI thread
+        /// because <see cref="InitializePpc"/> runs on a thread-pool thread.
+        /// </summary>
+        private void ShowPpcConnectionFailedWarning(string host, int port)
+        {
+            var title = LocalizationManager.GetString("Ppc_ConnectionFailedTitle");
+            var body = LocalizationManager.GetString("Ppc_ConnectionFailedBody", host, port);
+
+            // RTL message boxes require an owner window, so set the options
+            // based on the active language and always pass `this` as owner.
+            var options = LocalizationManager.IsRightToLeft
+                ? MessageBoxOptions.RtlReading
+                : (MessageBoxOptions)0;
+
+            // Marshal onto the UI thread — MessageBox must be shown there and
+            // IsHandleCreated may be false during very early startup.
+            void ShowBox()
+            {
+                MessageBox.Show(this, body, title,
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning,
+                    MessageBoxDefaultButton.Button1, options);
+            }
+
+            try
+            {
+                if (IsHandleCreated && InvokeRequired)
+                    BeginInvoke((Action)ShowBox);
+                else
+                    ShowBox();
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("Failed to show PPC connection warning window", ex);
+            }
         }
 
         /// <summary>
