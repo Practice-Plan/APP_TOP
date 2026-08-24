@@ -36,6 +36,11 @@ namespace WindowTopTool
         /// <summary>Default PPC listen port.</summary>
         public const int DefaultPort = 9527;
 
+        /// <summary>Default per-user PPC executable installed by wang.station.</summary>
+        public static string DefaultPpcExecutablePath => Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "wang.station", "ppc.exe");
+
         /// <summary>Read timeout for server responses (milliseconds).</summary>
         private const int ReadTimeoutMs = 5000;
 
@@ -323,7 +328,7 @@ namespace WindowTopTool
         ///
         /// Tries, in order:
         /// <list type="number">
-        /// <item>Find and launch a real <c>ppc.exe</c> in the application or standard install directories.</item>
+        /// <item>Find and open a real <c>ppc.exe</c> through Windows Explorer in the application or standard install directories.</item>
         /// <item>Confirm <c>ppc</c> exists on PATH, then run the <c>ppc</c> command in a terminal.</item>
         /// </list>
         /// Returns <c>true</c> when a process was launched; <c>false</c> when
@@ -335,6 +340,7 @@ namespace WindowTopTool
             // mistaken for a successful terminal launch.
             var localCandidates = new List<string>
             {
+                DefaultPpcExecutablePath,
                 Path.Combine(AppContext.BaseDirectory, "ppc.exe"),
             };
             var pf64 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
@@ -351,9 +357,13 @@ namespace WindowTopTool
 
                 try
                 {
+                    // Ask Explorer to open the executable, matching the
+                    // normal user double-click flow instead of creating PPC
+                    // directly as a child process of this application.
                     var psi = new ProcessStartInfo
                     {
-                        FileName = candidate,
+                        FileName = "explorer.exe",
+                        Arguments = $"\"{candidate}\"",
                         UseShellExecute = true,
                         WindowStyle = ProcessWindowStyle.Normal,
                     };
@@ -361,7 +371,7 @@ namespace WindowTopTool
                     var proc = Process.Start(psi);
                     if (proc != null)
                     {
-                        AppLogger.Info($"PPC server started from application path '{candidate}' (PID {proc.Id})");
+                        AppLogger.Info($"PPC opened through Windows Explorer from '{candidate}' (PID {proc.Id})");
                         return true;
                     }
                 }

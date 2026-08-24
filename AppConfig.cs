@@ -84,10 +84,9 @@ namespace WindowTopTool
         public List<string> AllowedApplications { get; set; } = new List<string>();
 
         // --- PPC connector configuration ---
-        // When enabled, the application connects to the PPC Central Processing
-        // System via the ppc-connect protocol (must match ppc-connect v1.0 /
-        // PPC 0.0.5).
-        public bool PpcEnabled { get; set; } = false;
+        // PPC is required for installed builds from v0.0.5 onward. The
+        // property remains for config-file compatibility.
+        public bool PpcEnabled { get; set; } = true;
         public string PpcHost { get; set; } = PpcConnector.DefaultHost;
         public int PpcPort { get; set; } = PpcConnector.DefaultPort;
         // App identity used when registering with PPC.
@@ -214,54 +213,6 @@ namespace WindowTopTool
         /// <summary>True when the config directory has been migrated to PPC.</summary>
         public static bool IsPpcConfigDirectorySet => !string.IsNullOrEmpty(_configDirectory);
 
-        // ── Portable mode ───────────────────────────────────────
-        // When a marker file (WindowTopTool.portable) is present next to the
-        // executable, the app runs in portable mode: configuration and logs
-        // are stored next to the exe, and PPC is never contacted. A single
-        // build thus serves both installed and portable use — dropping the
-        // empty marker file into the build/publish output turns it into a
-        // portable distribution.
-
-        /// <summary>
-        /// Marker file name that enables portable mode. Its mere presence
-        /// (contents ignored) next to the executable switches the app into
-        /// self-contained mode.
-        /// </summary>
-        private const string PortableMarkerFileName = "WindowTopTool.portable";
-
-        /// <summary>
-        /// Directory containing the running executable, used as the storage
-        /// root in portable mode (config/, logs/ live here).
-        /// </summary>
-        public static string ExeDirectory { get; } = ResolveExeDirectory();
-
-        /// <summary>
-        /// True when running in portable mode — the marker file exists next
-        /// to the executable. In portable mode the app is fully
-        /// self-contained: config and logs live next to the exe, and PPC is
-        /// never invoked (no connect, no auto-start, no config migration),
-        /// regardless of the persisted <see cref="PpcEnabled"/> value.
-        /// </summary>
-        public static bool IsPortable { get; } =
-            File.Exists(Path.Combine(ExeDirectory, PortableMarkerFileName));
-
-        /// <summary>
-        /// Resolve the executable's directory. Falls back to the current
-        /// directory if the base directory cannot be determined.
-        /// </summary>
-        private static string ResolveExeDirectory()
-        {
-            try
-            {
-                var dir = AppContext.BaseDirectory;
-                return string.IsNullOrEmpty(dir) ? "." : dir;
-            }
-            catch
-            {
-                return ".";
-            }
-        }
-
         public static AppConfig Instance
         {
             get
@@ -363,10 +314,6 @@ namespace WindowTopTool
         /// </summary>
         public static void TryDetectPpcConfigPath()
         {
-            // Portable mode never uses the PPC-managed config directory.
-            if (IsPortable)
-                return;
-
             // Search the standard Program Files directories for a PPC install
             // that already has a migrated config.
             var searchDirs = new List<string>();
@@ -392,16 +339,6 @@ namespace WindowTopTool
 
         private static string GetConfigFilePath()
         {
-            // Portable mode: store config next to the executable so the
-            // distribution is fully self-contained (no %AppData% writes).
-            if (IsPortable)
-            {
-                var dir = Path.Combine(ExeDirectory, "config");
-                if (!Directory.Exists(dir))
-                    Directory.CreateDirectory(dir);
-                return Path.Combine(dir, "config.json");
-            }
-
             // When a PPC-managed config directory has been set (either by
             // migration or by auto-detection), use it. Otherwise fall back to
             // the default %AppData%/wang.station/app/WindowTopTool/ location.

@@ -80,16 +80,7 @@ namespace WindowTopTool
                 try
                 {
                     string dir;
-                    if (AppConfig.IsPortable)
-                    {
-                        // Portable mode: keep logs next to the executable so the
-                        // distribution leaves no trace in %AppData%.
-                        dir = Path.Combine(AppConfig.ExeDirectory, "logs");
-                    }
-                    else
-                    {
-                        dir = Path.Combine(AppConfig.DefaultDataDirectory, "logs");
-                    }
+                    dir = Path.Combine(AppConfig.DefaultDataDirectory, "logs");
                     Directory.CreateDirectory(dir);
                     _logFilePath = Path.Combine(dir, "app.log");
                 }

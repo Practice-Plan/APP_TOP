@@ -32,26 +32,13 @@ namespace WindowTopTool
             }
 
             // Before touching AppConfig, check whether a previously-migrated
-            // config exists under a detected PPC installation directory. This
-            // makes the app read from <ppc_path>/app/config/ on subsequent
-            // launches instead of the legacy %AppData% location.
-            // Skipped in portable mode — the config lives next to the exe and
-            // PPC is never used.
-            if (!AppConfig.IsPortable)
-            {
-                AppConfig.TryDetectPpcConfigPath();
-            }
+            // config exists under a detected PPC installation directory.
+            AppConfig.TryDetectPpcConfigPath();
 
             // Push the logging configuration into AppLogger before any other
             // component runs, so failure paths below are captured. Safe because
             // AppConfig.Load never calls back into AppLogger.
             AppLogger.Configure(AppConfig.Instance.LocalLogEnabled, AppConfig.Instance.PpcLogLevel);
-
-            if (AppConfig.IsPortable)
-            {
-                AppLogger.Info(
-                    "Running in portable mode — PPC is disabled; config and logs are stored next to the executable");
-            }
 
             // Initialize localization before any user-facing message so the
             // admin prompt and runtime-error dialog respect the system language.

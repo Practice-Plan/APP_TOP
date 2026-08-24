@@ -25,35 +25,4 @@
     </Content>
   </ItemGroup>
 
-  <!--
-    Portable build: pass -p:Portable=true to drop an empty
-    WindowTopTool.portable marker file next to the output assembly. At
-    runtime the marker switches the app into self-contained mode (config
-    and logs stored next to the exe, PPC disabled). Without the property
-    the build produces the normal (installed) distribution, and any marker
-    left by a previous portable build is removed so the output always
-    reflects the requested configuration.
-
-
-    Portable builds are not supported for publishing, so the marker is only created
-    when building. If you want to create a portable publish, you can see old versions of this project for an example of how to do that.
-
-  <Target Name="CreatePortableMarker"
-          AfterTargets="Build"
-          Condition="'$(Portable)' == 'false'">
-    <Touch Files="$(TargetDir)WindowTopTool.portable" AlwaysCreate="true" />
-    <Message Importance="High" Text="Portable marker created at $(TargetDir)WindowTopTool.portable" />
-  </Target>
-  <Target Name="RemovePortableMarker"
-          AfterTargets="Build"
-          Condition="'$(Portable)' != 'false'">
-    <Delete Files="$(TargetDir)WindowTopTool.portable" />
-  </Target>
-  <Target Name="CreatePortableMarkerOnPublish"
-          AfterTargets="Publish"
-          Condition="'$(Portable)' == 'false'">
-    <Touch Files="$(PublishDir)WindowTopTool.portable" AlwaysCreate="true" />
-    <Message Importance="High" Text="Portable marker created at $(PublishDir)WindowTopTool.portable" />
-  </Target>
-  -->
 </Project>

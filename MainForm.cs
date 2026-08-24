@@ -89,17 +89,17 @@ namespace WindowTopTool
         /// <item>Query PPCPATH and migrate the config to
         ///   <c>&lt;ppc_path&gt;/app/config/</c>.</item>
         /// </list>
-        /// All failures are logged but never crash the app — PPC is an optional
-        /// telemetry/management channel, not a hard dependency.
+        /// All failures are logged but never crash the app. PPC is required
+        /// for builds from v0.0.5 onward.
         /// </summary>
         private void InitializePpc()
         {
             var config = AppConfig.Instance;
-            // Portable mode never contacts PPC — hard guarantee that holds
-            // even if a portable config file (e.g. copied from an install)
-            // happens to carry PpcEnabled=true.
-            if (AppConfig.IsPortable || !config.PpcEnabled)
+            if (!config.PpcEnabled)
+            {
+                AppLogger.Info("PPC connection is disabled by configuration");
                 return;
+            }
 
             System.Threading.ThreadPool.QueueUserWorkItem(_ =>
             {

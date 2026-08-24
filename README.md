@@ -53,8 +53,8 @@ shows the current pinned window count.
 | **Operating System** | Windows 10 (1809+) or Windows 11, x64. Uses WinForms, `SetWindowPos`, global hotkeys (`RegisterHotKey`), and low-level mouse hooks (`SetWindowsHookEx`). |
 | **Runtime** | .NET 8.0 Desktop Runtime. Alternatively, publish self-contained so no runtime install is needed. |
 | **Permissions** | **Administrator recommended.** Required to pin windows owned by elevated processes. Without admin, higher-privilege windows may be unpinnable (the app prompts on launch). |
-| **PPC (optional)** | PPC server v0.0.8 running locally on `127.0.0.1:9527`. Only needed when PPC integration is enabled; **not** required for portable mode. |
-| **Disk** | < 50 MB (framework-dependent). Self-contained portable build ~150 MB. |
+| **PPC** | PPC server v0.0.8 running locally on `127.0.0.1:9527`. Required from v0.0.5 onward. |
+| **Disk** | < 50 MB (framework-dependent). |
 
 ## Installation
 
@@ -66,40 +66,7 @@ dotnet build -c Release
 ```
 
 Requires the .NET 8.0 Desktop Runtime to be installed on the target machine.
-Configuration and logs are stored under `%AppData%\WindowTopTool\`.
-
-### Option B — Portable (self-contained, no PPC, only support v0.0.4 or under v0.0.4)
-
-```bash
-# Build with the portable marker (single-binary, self-contained distribution)
-dotnet publish -c Release -p:Portable=true -r win-x64 --self-contained true
-```
-
-The publish output contains an empty `WindowTopTool.portable` marker file next
-to the executable. At runtime its presence switches the app into
-**self-contained portable mode**:
-
-- Configuration is stored in `<exe_dir>\config\config.json`
-- Logs are written to `<exe_dir>\logs\app.log`
-- **PPC is never invoked** (no connect, no auto-start, no config migration),
-  regardless of the persisted `PpcEnabled` value.
-
-> You can also turn any build output into a portable distribution by manually
-> creating an empty file named `WindowTopTool.portable` next to the exe.
-> Remove the file to return to installed mode.
-> When v0.0.6 release, We will optimize the README.md, We will delete the portable informations
-
-### Build Configuration Determinism
-
-| Command | Marker file | Runtime mode |
-|---------|-------------|--------------|
-| `dotnet build -c Release` | removed | Installed |
-| `dotnet build -c Release -p:Portable=true` | created | Portable |
-| `dotnet publish -c Release -p:Portable=true` | created | Portable |
-
-The build output always reflects the requested configuration: a normal build
-removes any marker left by a previous portable build, and a portable build
-recreates it.
+Configuration and logs are stored under `%AppData%\wang.station\app\WindowTopTool\`.
 
 ### System Tray
 
@@ -117,13 +84,9 @@ recreates it.
 
 ## Configuration
 
-The config file location depends on the runtime mode:
+The default config file location is:
 
-| Mode | Config path |
-|------|-------------|
-| Installed | `%AppData%\WindowTopTool\config.json` |
-| Portable | `<exe_dir>\config\config.json` |
-| PPC-managed (migrated) | `<ppc_path>\app\config\config.json` |
+`%AppData%\wang.station\app\WindowTopTool\config.json`
 
 When PPC integration is active and the app first connects to a PPC v0.0.6
 server, it queries `PPCPATH` and migrates the config to
@@ -135,24 +98,23 @@ On subsequent launches the migrated location is auto-detected.
 > never from the persisted config file. A stale persisted version (e.g.
 > `0.0.2`) is ignored, so the version reported to PPC always matches the build.
 
-## PPC Integration (Optional)
+## PPC Integration
 
-PPC integration is an optional telemetry/management channel — the app works
-fully without it. When enabled in settings (`PpcEnabled=true`), the app:
+PPC is required from v0.0.5 onward. The app:
 
 1. Connects to the PPC server at the configured host/port (default
    `127.0.0.1:9527`).
-2. If the server is unreachable, attempts to auto-start it from the system
-   `PATH`, then `C:\Program Files\ppc\ppc.exe`, then
-   `C:\Program Files (x86)\ppc\ppc.exe`.
+2. If the server is unreachable after three attempts, independently starts
+   `%AppData%\wang.station\ppc.exe` through Windows Shell, then searches
+   local installation paths and finally the system `PATH` command.
 3. Registers itself (`REGISTER_APP`) with app id `WindowTopTool` and the
    assembly version, persisting the returned hash for subsequent
    authentication (`AUTH`).
 4. Migrates the config to the PPC directory (see above).
 5. Forwards log entries and error codes to PPC.
 
-The connector strictly requires **PPC v0.0.6** (minimum and maximum); older
-servers are rejected. In **portable mode**, PPC integration is fully disabled.
+The connector strictly requires **PPC v0.0.8** (minimum and maximum); older
+servers are rejected.
 
 ## Multi-Language Support
 
@@ -177,10 +139,9 @@ Structured log lines follow the PPC server format:
 `[YYYY-MM-DD HH:MM:SS] [LEVEL] message`, with four levels
 (`DEBUG`, `INFO`, `WARN`, `ERROR`).
 
-| Mode | Log path |
-|------|----------|
-| Installed | `%AppData%\WindowTopTool\logs\app.log` |
-| Portable | `<exe_dir>\logs\app.log` |
+| Data | Path |
+|------|------|
+| Log | `%AppData%\wang.station\app\WindowTopTool\logs\app.log` |
 
 The log level and local logging toggle are configurable in settings.
 
@@ -210,7 +171,7 @@ TOP_APP
 ├── WindowInfo.cs           Window metadata model
 ├── Localization/           strings.{en,zh,fr,ru,ar}.json + manager
 ├── icon.ico                Application icon
-└── WindowTopTool.csproj    Project + portable build targets
+└── WindowTopTool.csproj    Project configuration
 ```
 
 ## Version History
@@ -219,6 +180,6 @@ TOP_APP
 |---------|------------|
 | 0.0.5 | PPC v0.0.8 integration (global signature relaxation, no AUTH required); PiP mode shows live window content via PrintWindow instead of just an icon; configurable PiP size in settings; error status codes forwarded to PPC WINDOW ERROR popup; `ShowErrorWindow`/`ShowInfoWindow` on PpcConnector. |
 | 0.0.4 | English-only code comments; PPC terminal auto-start with visible window; multilingual PPC connection-failure warning; PPC version range expanded to 0.0.6–0.0.7. |
-| 0.0.3 | Portable mode; assembly-version-sourced `PpcAppVersion`; double-click activation fix; config migration to PPC directory; multi-language (en/zh/fr/ru/ar); PPC v0.0.6 integration. |
+| 0.0.3 | Assembly-version-sourced `PpcAppVersion`; double-click activation fix; config migration to PPC directory; multi-language (en/zh/fr/ru/ar); PPC integration. |
 | 0.0.2 | PPC connector integration; local logging; error-code mirroring. |
 | 0.0.1 | Initial release: pinning, click-through, mini-window, PiP, edge auto-hide, opacity, tray, state persistence. |
