@@ -15,6 +15,8 @@ namespace WindowTopTool
         private NumericUpDown? _opacityNumeric;
         private NumericUpDown? _edgeThresholdNumeric;
         private NumericUpDown? _autoSaveIntervalNumeric;
+        private NumericUpDown? _pipWidthNumeric;
+        private NumericUpDown? _pipHeightNumeric;
         private CheckBox? _showNotificationsCheckBox;
         private CheckBox? _showPinNotificationsCheckBox;
         private CheckBox? _showErrorNotificationsCheckBox;
@@ -165,6 +167,8 @@ namespace WindowTopTool
                 _opacityNumeric = null;
                 _edgeThresholdNumeric = null;
                 _autoSaveIntervalNumeric = null;
+                _pipWidthNumeric = null;
+                _pipHeightNumeric = null;
                 _showNotificationsCheckBox = null;
                 _showPinNotificationsCheckBox = null;
                 _showErrorNotificationsCheckBox = null;
@@ -387,9 +391,31 @@ namespace WindowTopTool
                     Maximum = 300,
                     Value = 30
                 });
+            groupY += 32;
+
+            AddLabeledControl(windowGroupBox, ref groupY, "PiP Width",
+                _pipWidthNumeric = new NumericUpDown
+                {
+                    Location = new Point(200, groupY - 2),
+                    Size = new Size(75, 22),
+                    Minimum = 120,
+                    Maximum = 600,
+                    Value = 240
+                });
+            groupY += 32;
+
+            AddLabeledControl(windowGroupBox, ref groupY, "PiP Height",
+                _pipHeightNumeric = new NumericUpDown
+                {
+                    Location = new Point(200, groupY - 2),
+                    Size = new Size(75, 22),
+                    Minimum = 80,
+                    Maximum = 500,
+                    Value = 180
+                });
 
             tab.Controls.Add(windowGroupBox);
-            yOffset += 150;
+            yOffset += 215;
 
             // Notification Settings Group
             _notificationsGroupBox = new GroupBox
@@ -676,6 +702,12 @@ namespace WindowTopTool
             if (_autoSaveIntervalNumeric != null)
                 _autoSaveIntervalNumeric.Value = _config.AutoSaveInterval;
 
+            if (_pipWidthNumeric != null)
+                _pipWidthNumeric.Value = _config.PiPWidth;
+
+            if (_pipHeightNumeric != null)
+                _pipHeightNumeric.Value = _config.PiPHeight;
+
             if (_showNotificationsCheckBox != null)
                 _showNotificationsCheckBox.Checked = _config.ShowNotifications;
 
@@ -936,6 +968,12 @@ namespace WindowTopTool
 
             if (_autoSaveIntervalNumeric != null)
                 _config.AutoSaveInterval = (int)_autoSaveIntervalNumeric.Value;
+
+            if (_pipWidthNumeric != null)
+                _config.PiPWidth = (int)_pipWidthNumeric.Value;
+
+            if (_pipHeightNumeric != null)
+                _config.PiPHeight = (int)_pipHeightNumeric.Value;
 
             if (_showNotificationsCheckBox != null)
                 _config.ShowNotifications = _showNotificationsCheckBox.Checked;

@@ -25,10 +25,10 @@ namespace WindowTopTool
         public const string ConnectorVersion = "1.0";
 
         /// <summary>Lowest PPC version this connector can talk to.</summary>
-        public const string MinPpcVersion = "0.0.6";
+        public const string MinPpcVersion = "0.0.8";
 
         /// <summary>Highest PPC version this connector can talk to.</summary>
-        public const string MaxPpcVersion = "0.0.7";
+        public const string MaxPpcVersion = "0.0.8";
 
         /// <summary>Default PPC listen address.</summary>
         public const string DefaultHost = "127.0.0.1";
@@ -508,10 +508,48 @@ namespace WindowTopTool
         // Helpers
         // ------------------------------------------------------------------
 
+        /// <summary>
+        /// v0.0.8: Global signature relaxation — AUTH is optional.
+        /// This is now a no-op; commands work without prior authentication.
+        /// </summary>
         private void RequireAuth()
         {
-            if (!_authenticated)
-                throw new InvalidOperationException("Not authenticated — call Authenticate() first.");
+            // No-op: PPC v0.0.8 allows all commands without AUTH.
+        }
+
+        /// <summary>
+        /// Send a WINDOW ERROR command to PPC, which displays a popup error
+        /// window on the PPC host. Silently skips if not connected.
+        /// </summary>
+        public void ShowErrorWindow(string message)
+        {
+            if (_stream == null || _client == null || !_client.Connected)
+                return;
+            try
+            {
+                SendCommand("WINDOW", $"ERROR {message}");
+            }
+            catch
+            {
+                // Silent fail — don't let error notification cause more errors.
+            }
+        }
+
+        /// <summary>
+        /// Send a WINDOW INFO command to PPC. Silently skips if not connected.
+        /// </summary>
+        public void ShowInfoWindow(string message)
+        {
+            if (_stream == null || _client == null || !_client.Connected)
+                return;
+            try
+            {
+                SendCommand("WINDOW", $"INFO {message}");
+            }
+            catch
+            {
+                // Silent fail.
+            }
         }
 
         private void EnsureSuccess(PpcResponse resp, string operation)

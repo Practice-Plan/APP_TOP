@@ -9,7 +9,7 @@ tray, supports global hotkeys, and integrates **optionally** with the
 [PPC Central Processing System](../main/README.md) for centralized
 application management and logging.
 
-- **Version:** 0.0.4
+- **Version:** 0.0.5
 - **Target:** .NET 8.0 (`net8.0-windows`, WinForms)
 - **License:** GPL-3.0 (see `LICENSE`)
 
@@ -216,6 +216,7 @@ TOP_APP
 
 | Version | Highlights |
 |---------|------------|
+| 0.0.5 | PPC v0.0.8 integration (global signature relaxation, no AUTH required); PiP mode shows live window content via PrintWindow instead of just an icon; configurable PiP size in settings; error status codes forwarded to PPC WINDOW ERROR popup; `ShowErrorWindow`/`ShowInfoWindow` on PpcConnector. |
 | 0.0.4 | English-only code comments; PPC terminal auto-start with visible window; multilingual PPC connection-failure warning; PPC version range expanded to 0.0.6–0.0.7. |
 | 0.0.3 | Portable mode; assembly-version-sourced `PpcAppVersion`; double-click activation fix; config migration to PPC directory; multi-language (en/zh/fr/ru/ar); PPC v0.0.6 integration. |
 | 0.0.2 | PPC connector integration; local logging; error-code mirroring. |

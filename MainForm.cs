@@ -25,6 +25,7 @@ namespace WindowTopTool
             _pinManager = new WindowPinManager();
             _trayManager = new TrayManager(_pinManager);
             _autoHideManager = new EdgeAutoHideManager(_pinManager);
+            _autoHideManager.PiPSize = new Size(_config.PiPWidth, _config.PiPHeight);
             _miniWindowManager = new MiniWindowManager(_pinManager);
 
             // Initialize hook manager for click-through
@@ -186,6 +187,7 @@ namespace WindowTopTool
                         "PPC connection failed",
                         ex,
                         ex.ErrorCode ?? PpcErrorCodes.ErrorPpcNotRunning);
+                    ForwardErrorToPpc($"PPC connection failed [{ex.ErrorCode ?? PpcErrorCodes.ErrorPpcNotRunning}]: {ex.Message}");
                     if (connectionAndStartupFailed)
                     {
                         ShowPpcConnectionFailedWarning(config.PpcHost, config.PpcPort);
@@ -197,6 +199,7 @@ namespace WindowTopTool
                         "PPC initialization error",
                         ex,
                         PpcErrorCodes.ErrorPpcNotRunning);
+                    ForwardErrorToPpc($"PPC init error: {ex.Message}");
                 }
             });
         }
@@ -269,6 +272,24 @@ namespace WindowTopTool
             catch (Exception ex)
             {
                 AppLogger.Error("Failed to migrate config to PPC directory", ex);
+                ForwardErrorToPpc($"Config migration failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Forward an error message to PPC's WINDOW ERROR popup. Silently
+        /// skips if PPC is not connected. This implements v0.0.5's
+        /// "all error status codes shown via PPC WINDOW" requirement.
+        /// </summary>
+        private void ForwardErrorToPpc(string message)
+        {
+            try
+            {
+                _ppcConnector?.ShowErrorWindow($"[WindowTopTool] {message}");
+            }
+            catch
+            {
+                // Silent fail — don't let error notification cause more errors.
             }
         }
 

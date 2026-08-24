@@ -135,6 +135,12 @@ namespace WindowTopTool
             public int Right;
             public int Bottom;
         }
+
+        // PrintWindow flags
+        public const int PW_RENDERFULLCONTENT = 2;
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool PrintWindow(IntPtr hWnd, IntPtr hdcBlt, int nFlags);
     }
 
     /// <summary>

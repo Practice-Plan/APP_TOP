@@ -22,6 +22,9 @@ namespace WindowTopTool
         private bool _disposed = false;
         private Icon? _defaultIcon;
 
+        /// <summary>Size for new PiP windows (set from AppConfig).</summary>
+        public Size PiPSize { get; set; } = new Size(240, 180);
+
         public EdgeAutoHideManager(WindowPinManager pinManager)
         {
             _pinManager = pinManager;
@@ -237,7 +240,7 @@ namespace WindowTopTool
                 var windowIcon = GetWindowIcon(hWnd);
 
                 // Create PiP window
-                var pipWindow = new PiPWindow(hWnd, windowInfo.Title, windowIcon ?? _defaultIcon, originalSize, originalLocation);
+                var pipWindow = new PiPWindow(hWnd, windowInfo.Title, windowIcon ?? _defaultIcon, originalSize, originalLocation, PiPSize);
                 pipWindow.WindowRestored += OnWindowRestored;
                 pipWindow.Show();
 

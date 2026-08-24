@@ -9,7 +9,7 @@
     <LangVersion>12</LangVersion>
     <ApplicationIcon>icon.ico</ApplicationIcon>
     <AssemblyName>WindowTopTool</AssemblyName>
-    <Version>0.0.4</Version>
+    <Version>0.0.5</Version>
     <Authors>wang.station</Authors>
     <Product>Window Top Tool</Product>
     <Description>A window management tool for pinning windows to top</Description>

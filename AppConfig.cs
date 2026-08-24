@@ -33,6 +33,10 @@ namespace WindowTopTool
         public int MiniWindowX { get; set; } = 50;
         public int MiniWindowY { get; set; } = 50;
 
+        // PiP mode configuration (v0.0.5+)
+        public int PiPWidth { get; set; } = 240;
+        public int PiPHeight { get; set; } = 180;
+
         // Auto-save interval in seconds
         public int AutoSaveInterval { get; set; } = 30;
 
