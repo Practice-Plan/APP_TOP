@@ -10,7 +10,7 @@ namespace WindowTopTool
     /// Client-side application logger for TOP_APP.
     ///
     /// Writes structured log lines to
-    /// <c>%AppData%/WindowTopTool/logs/app.log</c> using the same format as the
+    /// <c>%AppData%/wang.station/app/WindowTopTool/logs/app.log</c> using the same format as the
     /// PPC server logger:
     /// <code>[YYYY-MM-DD HH:MM:SS] [LEVEL] message</code>
     ///
@@ -88,8 +88,7 @@ namespace WindowTopTool
                     }
                     else
                     {
-                        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                        dir = Path.Combine(appData, "WindowTopTool", "logs");
+                        dir = Path.Combine(AppConfig.DefaultDataDirectory, "logs");
                     }
                     Directory.CreateDirectory(dir);
                     _logFilePath = Path.Combine(dir, "app.log");

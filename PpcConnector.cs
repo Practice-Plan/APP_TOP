@@ -106,6 +106,12 @@ namespace WindowTopTool
             }
             catch (SocketException ex)
             {
+                _stream?.Dispose();
+                _client?.Dispose();
+                _stream = null;
+                _client = null;
+                _authenticated = false;
+                _appId = null;
                 throw new PpcException(
                     $"Connection error: cannot reach PPC at {Host}:{Port}: {ex.Message}",
                     PpcErrorCodes.ErrorPpcNotRunning, ex);
@@ -132,6 +138,12 @@ namespace WindowTopTool
             }
             catch (SocketException ex)
             {
+                _stream?.Dispose();
+                _client?.Dispose();
+                _stream = null;
+                _client = null;
+                _authenticated = false;
+                _appId = null;
                 throw new PpcException(
                     $"Connection error: cannot reach PPC at {Host}:{Port}: {ex.Message}",
                     PpcErrorCodes.ErrorPpcNotRunning, ex);
@@ -311,55 +323,45 @@ namespace WindowTopTool
         ///
         /// Tries, in order:
         /// <list type="number">
-        /// <item><c>ppc</c> / <c>ppc.exe</c> on the system PATH (command line).</item>
-        /// <item><c>C:\Program Files\ppc\ppc.exe</c></item>
-        /// <item><c>C:\Program Files (x86)\ppc\ppc.exe</c></item>
+        /// <item>Find and launch a real <c>ppc.exe</c> in the application or standard install directories.</item>
+        /// <item>Confirm <c>ppc</c> exists on PATH, then run the <c>ppc</c> command in a terminal.</item>
         /// </list>
         /// Returns <c>true</c> when a process was launched; <c>false</c> when
         /// no executable could be found or started.
         /// </summary>
         public static bool TryStartPpcServer()
         {
-            // Collect candidate executable paths.
-            var candidates = new List<string>();
-
-            // 1. Rely on the OS to resolve "ppc" / "ppc.exe" via PATH.
-            candidates.Add("ppc");
-            candidates.Add("ppc.exe");
-
-            // 2 & 3. Search the standard Program Files directories.
+            // Search locally first so a missing shell command cannot be
+            // mistaken for a successful terminal launch.
+            var localCandidates = new List<string>
+            {
+                Path.Combine(AppContext.BaseDirectory, "ppc.exe"),
+            };
             var pf64 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
             var pf86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
             if (!string.IsNullOrEmpty(pf64))
-                candidates.Add(Path.Combine(pf64, "ppc", "ppc.exe"));
+                localCandidates.Add(Path.Combine(pf64, "ppc", "ppc.exe"));
             if (!string.IsNullOrEmpty(pf86))
-                candidates.Add(Path.Combine(pf86, "ppc", "ppc.exe"));
+                localCandidates.Add(Path.Combine(pf86, "ppc", "ppc.exe"));
 
-            foreach (var candidate in candidates)
+            foreach (var candidate in localCandidates)
             {
+                if (!File.Exists(candidate))
+                    continue;
+
                 try
                 {
-                    // Launch PPC inside a visible terminal window. cmd.exe /K
-                    // runs PPC as a child process and keeps the terminal open,
-                    // so the user can read startup output and any error
-                    // messages even if PPC exits immediately. The candidate
-                    // path is quoted so paths containing spaces (e.g.
-                    // "C:\Program Files\ppc\ppc.exe") are handled correctly.
                     var psi = new ProcessStartInfo
                     {
-                        FileName = "cmd.exe",
-                        Arguments = $"/K \"{candidate}\"",
+                        FileName = candidate,
                         UseShellExecute = true,
                         WindowStyle = ProcessWindowStyle.Normal,
-                        CreateNoWindow = false,
                     };
 
                     var proc = Process.Start(psi);
                     if (proc != null)
                     {
-                        AppLogger.Info($"PPC server started from '{candidate}' (PID {proc.Id})");
-                        // Give the server a moment to bind to its port.
-                        System.Threading.Thread.Sleep(1500);
+                        AppLogger.Info($"PPC server started from application path '{candidate}' (PID {proc.Id})");
                         return true;
                     }
                 }
@@ -368,6 +370,47 @@ namespace WindowTopTool
                     // File not found / cannot start — try the next candidate.
                     AppLogger.Debug($"Could not start PPC from '{candidate}': {ex.Message}");
                 }
+            }
+
+            // Last resort: only open a terminal when the command really is
+            // resolvable through PATH. cmd.exe itself is not proof that PPC
+            // was found, so verify with where.exe first.
+            try
+            {
+                var where = new ProcessStartInfo
+                {
+                    FileName = "where.exe",
+                    Arguments = "ppc",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    CreateNoWindow = true,
+                };
+                using var whereProcess = Process.Start(where);
+                if (whereProcess != null)
+                {
+                    var path = whereProcess.StandardOutput.ReadToEnd().Trim();
+                    whereProcess.WaitForExit();
+                    if (whereProcess.ExitCode == 0 && !string.IsNullOrEmpty(path))
+                    {
+                        var terminal = Process.Start(new ProcessStartInfo
+                        {
+                            FileName = "cmd.exe",
+                            Arguments = "/K ppc",
+                            UseShellExecute = true,
+                            WindowStyle = ProcessWindowStyle.Normal,
+                            CreateNoWindow = false,
+                        });
+                        if (terminal != null)
+                        {
+                            AppLogger.Info($"PPC server started with terminal command 'ppc' (PATH: {path})");
+                            return true;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Debug($"Could not start PPC with terminal command: {ex.Message}");
             }
 
             AppLogger.Warn(

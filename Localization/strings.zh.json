@@ -58,7 +58,7 @@
   "Settings_SaveFailedBody": "保存设置失败：\n\n{0}",
   "Settings_LanguageLabel": "语言",
 
-  "About_Title": "Window Top Tool  v0.0.4",
+  "About_Title": "Window Top Tool  v0.0.5",
   "About_Subtitle": "轻量级窗口置顶管理工具",
   "About_FeaturesHeader": "功能说明",
   "About_Feature_Pin_Name": "窗口置顶",

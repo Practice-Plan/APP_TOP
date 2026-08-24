@@ -10,6 +10,8 @@ namespace WindowTopTool
     /// </summary>
     public class AppConfig
     {
+        public const string ApplicationName = "WindowTopTool";
+
         // Hotkey configuration
         public int PinHotKeyId { get; set; } = 1;
         public int PinHotkeyModifier { get; set; } = NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT;
@@ -165,7 +167,7 @@ namespace WindowTopTool
         // Minimum level forwarded to the PPC client log: DEBUG|INFO|WARN|ERROR.
         public string PpcLogLevel { get; set; } = "INFO";
         // Master switch for the TOP_APP local log (written to
-        // %AppData%/WindowTopTool/logs/app.log). When false, AppLogger calls
+        // %AppData%/wang.station/app/WindowTopTool/logs/app.log). When false, AppLogger calls
         // become no-ops.
         public bool LocalLogEnabled { get; set; } = true;
 
@@ -200,9 +202,14 @@ namespace WindowTopTool
         /// <summary>
         /// When non-null, configuration is read from / written to this
         /// directory (typically <c>&lt;ppc_path&gt;/app/config/</c>).
-        /// When null, the legacy <c>%AppData%/WindowTopTool/</c> location is used.
+                /// When null, the default <c>%AppData%/wang.station/app/WindowTopTool/</c>
+                /// location is used.
         /// </summary>
-        private static string? _configDirectory;
+                private static string? _configDirectory;
+
+                public static string DefaultDataDirectory { get; } = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                        "wang.station", "app", ApplicationName);
 
         /// <summary>True when the config directory has been migrated to PPC.</summary>
         public static bool IsPpcConfigDirectorySet => !string.IsNullOrEmpty(_configDirectory);
@@ -397,12 +404,11 @@ namespace WindowTopTool
 
             // When a PPC-managed config directory has been set (either by
             // migration or by auto-detection), use it. Otherwise fall back to
-            // the legacy %AppData% location.
+            // the default %AppData%/wang.station/app/WindowTopTool/ location.
             if (!string.IsNullOrEmpty(_configDirectory))
                 return Path.Combine(_configDirectory, "config.json");
 
-            var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            var appFolder = Path.Combine(appDataPath, "WindowTopTool");
+            var appFolder = DefaultDataDirectory;
             if (!Directory.Exists(appFolder))
                 Directory.CreateDirectory(appFolder);
             return Path.Combine(appFolder, "config.json");

@@ -58,7 +58,7 @@
   "Settings_SaveFailedBody": "Échec de l'enregistrement des paramètres :\n\n{0}",
   "Settings_LanguageLabel": "Langue",
 
-  "About_Title": "Window Top Tool  v0.0.4",
+  "About_Title": "Window Top Tool  v0.0.5",
   "About_Subtitle": "Outil léger d'épinglage de fenêtre",
   "About_FeaturesHeader": "Fonctionnalités",
   "About_Feature_Pin_Name": "Épinglage de fenêtre",

@@ -58,7 +58,7 @@
   "Settings_SaveFailedBody": "Не удалось сохранить параметры:\n\n{0}",
   "Settings_LanguageLabel": "Язык",
 
-  "About_Title": "Window Top Tool  v0.0.4",
+  "About_Title": "Window Top Tool  v0.0.5",
   "About_Subtitle": "Лёгкий инструмент закрепления окон",
   "About_FeaturesHeader": "Возможности",
   "About_Feature_Pin_Name": "Закрепление окна",

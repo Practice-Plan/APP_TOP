@@ -77,8 +77,7 @@ namespace WindowTopTool
 
         private static string GetStateFilePath()
         {
-            var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            var appFolder = Path.Combine(appDataPath, "WindowTopTool");
+            var appFolder = AppConfig.DefaultDataDirectory;
             if (!Directory.Exists(appFolder))
             {
                 Directory.CreateDirectory(appFolder);

@@ -18,6 +18,7 @@ namespace WindowTopTool
         private readonly System.Windows.Forms.Timer _autoSaveTimer;
         private SettingsForm? _settingsForm;
         private PpcConnector? _ppcConnector;
+        private const int PpcConnectAttempts = 3;
 
         public MainForm()
         {
@@ -25,7 +26,7 @@ namespace WindowTopTool
             _pinManager = new WindowPinManager();
             _trayManager = new TrayManager(_pinManager);
             _autoHideManager = new EdgeAutoHideManager(_pinManager);
-            _autoHideManager.PiPSize = new Size(_config.PiPWidth, _config.PiPHeight);
+            _autoHideManager.PiPSize = new Size(AppConfig.Instance.PiPWidth, AppConfig.Instance.PiPHeight);
             _miniWindowManager = new MiniWindowManager(_pinManager);
 
             // Initialize hook manager for click-through
@@ -110,28 +111,30 @@ namespace WindowTopTool
                     AppLogger.Info($"Connecting to PPC at {config.PpcHost}:{config.PpcPort}");
                     _ppcConnector = new PpcConnector(config.PpcHost, config.PpcPort);
 
-                    try
+                    if (!TryConnectToPpc(PpcConnectAttempts))
                     {
-                        _ppcConnector.Connect();
-                    }
-                    catch (PpcException) when (!AppConfig.IsPpcConfigDirectorySet)
-                    {
-                        // PPC server is not running — try to start it in a
-                        // visible terminal so the user can see its output.
+                        // Three connection attempts failed. At this point the
+                        // most likely cause is that PPC is not running, so
+                        // search for it locally before falling back to PATH.
                         AppLogger.Warn(
-                            "PPC server not reachable; attempting auto-start in terminal",
+                            $"PPC connection failed after {PpcConnectAttempts} attempts; checking for a local PPC installation",
                             PpcErrorCodes.WarningPpcReconnect);
                         if (PpcConnector.TryStartPpcServer())
                         {
-                            _ppcConnector.Connect();
+                            if (!TryConnectToPpc(PpcConnectAttempts))
+                            {
+                                connectionAndStartupFailed = true;
+                                throw new PpcException(
+                                    $"PPC remained unreachable after {PpcConnectAttempts} post-start attempts.",
+                                    PpcErrorCodes.ErrorPpcNotRunning);
+                            }
                         }
                         else
                         {
-                            // Both the direct connection and the terminal
-                            // auto-start failed — flag this so the outer
-                            // handler shows a localized warning window.
                             connectionAndStartupFailed = true;
-                            throw;
+                            throw new PpcException(
+                                "PPC was not found in the application or PATH and could not be started.",
+                                PpcErrorCodes.ErrorPpcNotRunning);
                         }
                     }
                     AppLogger.Info("Connected to PPC server");
@@ -202,6 +205,34 @@ namespace WindowTopTool
                     ForwardErrorToPpc($"PPC init error: {ex.Message}");
                 }
             });
+        }
+
+        private bool TryConnectToPpc(int attempts)
+        {
+            for (var attempt = 1; attempt <= attempts; attempt++)
+            {
+                try
+                {
+                    _ppcConnector!.Connect();
+                    return true;
+                }
+                catch (PpcException ex) when (attempt < attempts)
+                {
+                    AppLogger.Warn(
+                        $"PPC connection attempt {attempt}/{attempts} failed: {ex.Message}",
+                        PpcErrorCodes.WarningPpcReconnect);
+                    System.Threading.Thread.Sleep(500);
+                }
+                catch (PpcException ex)
+                {
+                    AppLogger.Warn(
+                        $"PPC connection attempt {attempt}/{attempts} failed: {ex.Message}",
+                        PpcErrorCodes.WarningPpcReconnect);
+                    return false;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>
