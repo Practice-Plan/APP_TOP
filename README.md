@@ -53,7 +53,7 @@ shows the current pinned window count.
 | **Operating System** | Windows 10 (1809+) or Windows 11, x64. Uses WinForms, `SetWindowPos`, global hotkeys (`RegisterHotKey`), and low-level mouse hooks (`SetWindowsHookEx`). |
 | **Runtime** | .NET 8.0 Desktop Runtime. Alternatively, publish self-contained so no runtime install is needed. |
 | **Permissions** | **Administrator recommended.** Required to pin windows owned by elevated processes. Without admin, higher-privilege windows may be unpinnable (the app prompts on launch). |
-| **PPC (optional)** | PPC server v0.0.6 running locally on `127.0.0.1:9527`. Only needed when PPC integration is enabled; **not** required for portable mode. |
+| **PPC (optional)** | PPC server v0.0.8 running locally on `127.0.0.1:9527`. Only needed when PPC integration is enabled; **not** required for portable mode. |
 | **Disk** | < 50 MB (framework-dependent). Self-contained portable build ~150 MB. |
 
 ## Installation
@@ -68,7 +68,7 @@ dotnet build -c Release
 Requires the .NET 8.0 Desktop Runtime to be installed on the target machine.
 Configuration and logs are stored under `%AppData%\WindowTopTool\`.
 
-### Option B — Portable (self-contained, no PPC)
+### Option B — Portable (self-contained, no PPC, only support v0.0.4 or under v0.0.4)
 
 ```bash
 # Build with the portable marker (single-binary, self-contained distribution)
@@ -87,6 +87,7 @@ to the executable. At runtime its presence switches the app into
 > You can also turn any build output into a portable distribution by manually
 > creating an empty file named `WindowTopTool.portable` next to the exe.
 > Remove the file to return to installed mode.
+> When v0.0.6 release, We will optimize the README.md, We will delete the portable informations
 
 ### Build Configuration Determinism
 
