@@ -288,6 +288,20 @@ namespace WindowTopTool
         }
 
         /// <summary>
+        /// Apply the current global window settings to every pinned window.
+        /// This keeps existing windows in sync when settings are saved.
+        /// </summary>
+        public void ApplyGlobalSettings()
+        {
+            var opacity = AppConfig.Instance.DefaultOpacity;
+            foreach (var hWnd in new List<IntPtr>(_pinnedWindows))
+            {
+                if (NativeMethods.IsWindow(hWnd))
+                    SetWindowOpacity(hWnd, opacity);
+            }
+        }
+
+        /// <summary>
         /// Enable/disable click-through mode
         /// </summary>
         public void SetClickThrough(IntPtr hWnd, bool enable)

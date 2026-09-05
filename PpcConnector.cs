@@ -28,7 +28,7 @@ namespace WindowTopTool
         public const string MinPpcVersion = "0.0.8";
 
         /// <summary>Highest PPC version this connector can talk to.</summary>
-        public const string MaxPpcVersion = "0.0.8";
+        public const string MaxPpcVersion = "0.0.9";
 
         /// <summary>Default PPC listen address.</summary>
         public const string DefaultHost = "127.0.0.1";
@@ -40,6 +40,11 @@ namespace WindowTopTool
         public static string DefaultPpcExecutablePath => Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "wang.station", "ppc.exe");
+
+        /// <summary>Default per-user 32-bit PPC executable.</summary>
+        public static string DefaultPpc32ExecutablePath => Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "wang.station", "ppc32.exe");
 
         /// <summary>Read timeout for server responses (milliseconds).</summary>
         private const int ReadTimeoutMs = 5000;
@@ -328,7 +333,7 @@ namespace WindowTopTool
         ///
         /// Tries, in order:
         /// <list type="number">
-        /// <item>Find and open a real <c>ppc.exe</c> through Windows Explorer in the application or standard install directories.</item>
+        /// <item>Find and independently launch a real PPC executable through Windows Shell.</item>
         /// <item>Confirm <c>ppc</c> exists on PATH, then run the <c>ppc</c> command in a terminal.</item>
         /// </list>
         /// Returns <c>true</c> when a process was launched; <c>false</c> when
@@ -341,7 +346,9 @@ namespace WindowTopTool
             var localCandidates = new List<string>
             {
                 DefaultPpcExecutablePath,
+                DefaultPpc32ExecutablePath,
                 Path.Combine(AppContext.BaseDirectory, "ppc.exe"),
+                Path.Combine(AppContext.BaseDirectory, "ppc32.exe"),
             };
             var pf64 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
             var pf86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
@@ -357,13 +364,9 @@ namespace WindowTopTool
 
                 try
                 {
-                    // Ask Explorer to open the executable, matching the
-                    // normal user double-click flow instead of creating PPC
-                    // directly as a child process of this application.
                     var psi = new ProcessStartInfo
                     {
-                        FileName = "explorer.exe",
-                        Arguments = $"\"{candidate}\"",
+                        FileName = candidate,
                         UseShellExecute = true,
                         WindowStyle = ProcessWindowStyle.Normal,
                     };
@@ -371,7 +374,7 @@ namespace WindowTopTool
                     var proc = Process.Start(psi);
                     if (proc != null)
                     {
-                        AppLogger.Info($"PPC opened through Windows Explorer from '{candidate}' (PID {proc.Id})");
+                        AppLogger.Info($"PPC independently started from '{candidate}' (PID {proc.Id})");
                         return true;
                     }
                 }

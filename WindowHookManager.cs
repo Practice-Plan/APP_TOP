@@ -120,7 +120,7 @@ namespace WindowTopTool
         /// activation up to <see cref="MAX_ACTIVATION_RETRIES"/> times.
         /// </summary>
         private int _activationRetryCount;
-        private const int MAX_ACTIVATION_RETRIES = 3;
+        private const int MAX_ACTIVATION_RETRIES = 8;
 
         /// <summary>Delayed refresh timer — ensures the click-through state is updated correctly after a foreground change takes effect.</summary>
         private System.Windows.Forms.Timer? _delayedRefreshTimer;
@@ -402,7 +402,15 @@ namespace WindowTopTool
 
                 try
                 {
+                    // Explicitly grant this process permission to change the
+                    // foreground and set the target as active/focused while
+                    // the input queues are attached. This closes the race in
+                    // which SetForegroundWindow succeeds but the target is
+                    // not yet the active window when the queues detach.
+                    NativeMethods.AllowSetForegroundWindow(0xFFFFFFFF);
                     BringWindowToTop(hWnd);
+                    NativeMethods.SetActiveWindow(hWnd);
+                    NativeMethods.SetFocus(hWnd);
                     NativeMethods.SetForegroundWindow(hWnd);
                     NativeMethods.SetForegroundWindow(hWnd);
                 }

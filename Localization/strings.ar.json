@@ -58,7 +58,7 @@
   "Settings_SaveFailedBody": "فشل حفظ الإعدادات:\n\n{0}",
   "Settings_LanguageLabel": "اللغة",
 
-  "About_Title": "Window Top Tool  v0.0.5",
+  "About_Title": "Window Top Tool  v0.0.6",
   "About_Subtitle": "أداة خفيفة لتثبيت النوافذ",
   "About_FeaturesHeader": "الميزات",
   "About_Feature_Pin_Name": "تثبيت النافذة",

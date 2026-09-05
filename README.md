@@ -5,11 +5,11 @@
 **Window Top Tool** is a lightweight Windows utility for pinning windows
 always-on-top, with click-through, mini-window, picture-in-picture, edge
 auto-hide, opacity control, and state persistence. It runs from the system
-tray, supports global hotkeys, and integrates **optionally** with the
-[PPC Central Processing System](../main/README.md) for centralized
+tray, and with the PPC Central Processing System
+<html><!- [PPC Central Processing System](../main/README.md) -!> </html> for centralized
 application management and logging.
 
-- **Version:** 0.0.5
+- **Version:** 0.0.6
 - **Target:** .NET 8.0 (`net8.0-windows`, WinForms)
 - **License:** GPL-3.0 (see `LICENSE`)
 
@@ -88,7 +88,7 @@ The default config file location is:
 
 `%AppData%\wang.station\app\WindowTopTool\config.json`
 
-When PPC integration is active and the app first connects to a PPC v0.0.6
+When the app first connects to a PPC v0.0.8
 server, it queries `PPCPATH` and migrates the config to
 `<ppc_path>\app\config\config.json` so settings follow the PPC installation.
 On subsequent launches the migrated location is auto-detected.
@@ -100,12 +100,14 @@ On subsequent launches the migrated location is auto-detected.
 
 ## PPC Integration
 
-PPC is required from v0.0.5 onward. The app:
+PPC is required from v0.0.5 onward. Version 0.0.6 additionally supports the
+32-bit PPC executable. The app:
 
 1. Connects to the PPC server at the configured host/port (default
    `127.0.0.1:9527`).
 2. If the server is unreachable after three attempts, independently starts
-   `%AppData%\wang.station\ppc.exe` through Windows Shell, then searches
+   `%AppData%\wang.station\ppc.exe` or
+   `%AppData%\wang.station\ppc32.exe` through Windows Shell, then searches
    local installation paths and finally the system `PATH` command.
 3. Registers itself (`REGISTER_APP`) with app id `WindowTopTool` and the
    assembly version, persisting the returned hash for subsequent
@@ -162,7 +164,7 @@ TOP_APP
 ├── WindowValidator.cs      Window pin eligibility checks
 ├── HotkeyManager.cs        Global hotkey registration
 ├── TrayManager.cs          System tray icon and context menu
-├── AppConfig.cs            Configuration, paths, portable-mode detection
+├── AppConfig.cs            Configuration and application data paths
 ├── AppLogger.cs            Local structured logger
 ├── PpcConnector.cs         PPC client (TCP, auth, version checks)
 ├── PpcErrorCodes.cs        Mirrored error/status codes
@@ -178,6 +180,7 @@ TOP_APP
 
 | Version | Highlights |
 |---------|------------|
+| 0.0.6 | PPC is required for normal builds; independent startup for 64-bit and 32-bit PPC; delayed post-start connection verification; existing pinned windows immediately receive saved global settings; improved double-click activation and foreground focus handling. |
 | 0.0.5 | PPC v0.0.8 integration (global signature relaxation, no AUTH required); PiP mode shows live window content via PrintWindow instead of just an icon; configurable PiP size in settings; error status codes forwarded to PPC WINDOW ERROR popup; `ShowErrorWindow`/`ShowInfoWindow` on PpcConnector. |
 | 0.0.4 | English-only code comments; PPC terminal auto-start with visible window; multilingual PPC connection-failure warning; PPC version range expanded to 0.0.6–0.0.7. |
 | 0.0.3 | Assembly-version-sourced `PpcAppVersion`; double-click activation fix; config migration to PPC directory; multi-language (en/zh/fr/ru/ar); PPC integration. |

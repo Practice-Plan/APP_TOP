@@ -19,11 +19,13 @@ namespace WindowTopTool
         private SettingsForm? _settingsForm;
         private PpcConnector? _ppcConnector;
         private const int PpcConnectAttempts = 3;
+        private const int PpcPostStartupConnectAttempts = 12;
 
         public MainForm()
         {
             // Initialize components
             _pinManager = new WindowPinManager();
+            AppConfig.Instance.ConfigurationChanged += OnConfigurationChanged;
             _trayManager = new TrayManager(_pinManager);
             _autoHideManager = new EdgeAutoHideManager(_pinManager);
             _autoHideManager.PiPSize = new Size(AppConfig.Instance.PiPWidth, AppConfig.Instance.PiPHeight);
@@ -95,11 +97,6 @@ namespace WindowTopTool
         private void InitializePpc()
         {
             var config = AppConfig.Instance;
-            if (!config.PpcEnabled)
-            {
-                AppLogger.Info("PPC connection is disabled by configuration");
-                return;
-            }
 
             System.Threading.ThreadPool.QueueUserWorkItem(_ =>
             {
@@ -121,7 +118,9 @@ namespace WindowTopTool
                             PpcErrorCodes.WarningPpcReconnect);
                         if (PpcConnector.TryStartPpcServer())
                         {
-                            if (!TryConnectToPpc(PpcConnectAttempts))
+                            // A newly started PPC may need several seconds to
+                            // initialize before binding its TCP port.
+                            if (!TryConnectToPpc(PpcPostStartupConnectAttempts))
                             {
                                 connectionAndStartupFailed = true;
                                 throw new PpcException(
@@ -374,6 +373,29 @@ namespace WindowTopTool
             ShowSettingsForm();
         }
 
+        private void OnConfigurationChanged(object? sender, EventArgs e)
+        {
+            void ApplySettings()
+            {
+                var config = AppConfig.Instance;
+                _pinManager.ApplyGlobalSettings();
+                _autoHideManager.PiPSize = new Size(config.PiPWidth, config.PiPHeight);
+                _hookManager?.RefreshClickThroughState();
+            }
+
+            try
+            {
+                if (IsHandleCreated && InvokeRequired)
+                    BeginInvoke((Action)ApplySettings);
+                else
+                    ApplySettings();
+            }
+            catch (InvalidOperationException)
+            {
+                // The form is closing; no runtime refresh is needed.
+            }
+        }
+
         private void OnPinWindowRequested(object? sender, IntPtr hWnd)
         {
             if (hWnd != IntPtr.Zero)
@@ -425,6 +447,8 @@ namespace WindowTopTool
                 _autoHideManager?.Dispose();
 
                 _hookManager?.Dispose();
+
+                AppConfig.Instance.ConfigurationChanged -= OnConfigurationChanged;
 
                 _pinManager?.SaveState();
                 _trayManager?.Dispose();
