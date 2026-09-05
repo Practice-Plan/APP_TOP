@@ -10,6 +10,7 @@
     <ApplicationIcon>icon.ico</ApplicationIcon>
     <AssemblyName>WindowTopTool</AssemblyName>
     <Version>0.0.6</Version>
+    <RuntimeIdentifiers>win-x86;win-x64</RuntimeIdentifiers>
     <Authors>wang.station</Authors>
     <Product>Window Top Tool</Product>
     <Description>A window management tool for pinning windows to top</Description>

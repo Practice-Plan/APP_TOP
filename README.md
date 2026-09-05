@@ -58,7 +58,7 @@ shows the current pinned window count.
 
 ## Installation
 
-### Option A — Installed (framework-dependent)
+### Option — Installed (framework-dependent)
 
 ```bash
 dotnet build -c Release
@@ -67,6 +67,28 @@ dotnet build -c Release
 
 Requires the .NET 8.0 Desktop Runtime to be installed on the target machine.
 Configuration and logs are stored under `%AppData%\wang.station\app\WindowTopTool\`.
+
+### 32-bit and 64-bit Builds
+
+Use the matching Windows Runtime Identifier to create an architecture-specific
+release. These commands produce framework-dependent packages and require the
+.NET 8.0 Desktop Runtime on the target machine.
+
+```powershell
+# 32-bit (x86)
+dotnet publish -c Release -r win-x86 --self-contained false -o bin\Release\net8.0-windows\win-x86\publish
+
+# 64-bit (x64)
+dotnet publish -c Release -r win-x64 --self-contained false -o bin\Release\net8.0-windows\win-x64\publish
+```
+
+The resulting executables are:
+
+- `bin\Release\net8.0-windows\win-x86\publish\WindowTopTool.exe`
+- `bin\Release\net8.0-windows\win-x64\publish\WindowTopTool.exe`
+
+Run these commands from the `TOP_APP` directory. Use the `win-x86` package for
+32-bit Windows and the `win-x64` package for 64-bit Windows.
 
 ### System Tray
 
