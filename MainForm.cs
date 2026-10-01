@@ -18,6 +18,7 @@ namespace WindowTopTool
         private readonly System.Windows.Forms.Timer _autoSaveTimer;
         private SettingsForm? _settingsForm;
         private PpcConnector? _ppcConnector;
+        private volatile bool _isClosing;
         private const int PpcConnectAttempts = 3;
         private const int PpcPostStartupConnectAttempts = 12;
 
@@ -80,7 +81,7 @@ namespace WindowTopTool
         /// synchronous TCP calls. The flow is:
         /// <list type="number">
         /// <item>Connect to PPC. If the server is not running, attempt to
-        ///   start it automatically in a visible terminal
+        ///   start it automatically in terminal mode
         ///   (PATH → Program Files → Program Files (x86)).</item>
         /// <item>If the connection still cannot be established after the
         ///   terminal auto-start, show a localized warning window so users in
@@ -182,6 +183,7 @@ namespace WindowTopTool
 
                     // Migrate config to <ppc_path>/app/config/ if not already there.
                     MigrateConfigToPpcDirectory();
+                    StartPpcConnectionMonitor(config);
                 }
                 catch (PpcException ex)
                 {
@@ -232,6 +234,87 @@ namespace WindowTopTool
             }
 
             return false;
+        }
+
+        private void StartPpcConnectionMonitor(AppConfig config)
+        {
+            System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+            {
+                while (!_isClosing)
+                {
+                    System.Threading.Thread.Sleep(5000);
+                    if (_isClosing)
+                        return;
+
+                    try
+                    {
+                        _ppcConnector?.Ping();
+                    }
+                    catch (Exception ex)
+                    {
+                        if (_isClosing)
+                            return;
+
+                        AppLogger.Warn(
+                            $"PPC connection was interrupted; attempting recovery: {ex.Message}",
+                            PpcErrorCodes.WarningPpcReconnect);
+                        RecoverPpcConnection(config);
+                    }
+                }
+            });
+        }
+
+        private void RecoverPpcConnection(AppConfig config)
+        {
+            var connector = _ppcConnector;
+            if (connector == null || _isClosing)
+                return;
+
+            connector.Disconnect();
+            if (!TryConnectToPpc(PpcConnectAttempts))
+            {
+                if (_isClosing)
+                    return;
+
+                PpcConnector.TryStartPpcServer();
+                if (!TryConnectToPpc(PpcPostStartupConnectAttempts))
+                {
+                    connector.Disconnect();
+                    AppLogger.Warn(
+                        "PPC recovery failed; will retry shortly",
+                        PpcErrorCodes.WarningPpcReconnect);
+                    return;
+                }
+            }
+
+            try
+            {
+                if (!string.IsNullOrEmpty(config.PpcAppHash))
+                {
+                    try
+                    {
+                        connector.Authenticate(config.PpcAppHash);
+                    }
+                    catch (PpcException)
+                    {
+                        var hash = connector.RegisterApp(
+                            config.PpcAppId, config.PpcAppVersion, Application.ExecutablePath);
+                        config.PpcAppHash = hash;
+                        config.Save();
+                        connector.AuthenticateWithStoredHash();
+                    }
+                }
+
+                connector.Ping();
+                AppLogger.Info("PPC connection recovered");
+            }
+            catch (Exception ex)
+            {
+                connector.Disconnect();
+                AppLogger.Warn(
+                    $"PPC recovery handshake failed: {ex.Message}",
+                    PpcErrorCodes.WarningPpcReconnect);
+            }
         }
 
         /// <summary>
@@ -437,6 +520,7 @@ namespace WindowTopTool
         {
             if (disposing)
             {
+                _isClosing = true;
                 _cleanupTimer?.Stop();
                 _cleanupTimer?.Dispose();
 

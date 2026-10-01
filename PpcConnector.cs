@@ -28,7 +28,7 @@ namespace WindowTopTool
         public const string MinPpcVersion = "0.0.8";
 
         /// <summary>Highest PPC version this connector can talk to.</summary>
-        public const string MaxPpcVersion = "0.0.9";
+        public const string MaxPpcVersion = "0.1.0";
 
         /// <summary>Default PPC listen address.</summary>
         public const string DefaultHost = "127.0.0.1";
@@ -58,6 +58,7 @@ namespace WindowTopTool
 
         private TcpClient? _client;
         private NetworkStream? _stream;
+        private readonly object _ioLock = new object();
         private bool _authenticated;
         private string? _appId;
         private string? _appHash;
@@ -168,12 +169,15 @@ namespace WindowTopTool
         /// </remarks>
         public void Disconnect()
         {
-            _stream?.Dispose();
-            _client?.Dispose();
-            _stream = null;
-            _client = null;
-            _authenticated = false;
-            _appId = null;
+            lock (_ioLock)
+            {
+                _stream?.Dispose();
+                _client?.Dispose();
+                _stream = null;
+                _client = null;
+                _authenticated = false;
+                _appId = null;
+            }
         }
 
         // ------------------------------------------------------------------
@@ -325,16 +329,14 @@ namespace WindowTopTool
         // ------------------------------------------------------------------
 
         /// <summary>
-        /// Attempt to start the PPC server when it appears to be unreachable.
-        /// PPC is launched inside a visible terminal window (cmd.exe /K) so the
-        /// user can observe server startup output and any error messages; the
-        /// terminal is kept open even if PPC exits, which makes startup
-        /// failures easy to diagnose.
+        /// Attempt to start the PPC server in its documented terminal mode.
+        /// The visible terminal lets the user observe startup output and
+        /// failures.
         ///
         /// Tries, in order:
         /// <list type="number">
-        /// <item>Find and independently launch a real PPC executable through Windows Shell.</item>
-        /// <item>Confirm <c>ppc</c> exists on PATH, then run the <c>ppc</c> command in a terminal.</item>
+        /// <item>Find and launch a PPC executable with the <c>-t</c> backend flag.</item>
+        /// <item>Confirm <c>ppc</c> exists on PATH, then run <c>ppc -t</c> in a terminal.</item>
         /// </list>
         /// Returns <c>true</c> when a process was launched; <c>false</c> when
         /// no executable could be found or started.
@@ -367,6 +369,7 @@ namespace WindowTopTool
                     var psi = new ProcessStartInfo
                     {
                         FileName = candidate,
+                        Arguments = "-t",
                         UseShellExecute = true,
                         WindowStyle = ProcessWindowStyle.Normal,
                     };
@@ -408,7 +411,7 @@ namespace WindowTopTool
                         var terminal = Process.Start(new ProcessStartInfo
                         {
                             FileName = "cmd.exe",
-                            Arguments = "/K ppc",
+                            Arguments = "/K ppc -t",
                             UseShellExecute = true,
                             WindowStyle = ProcessWindowStyle.Normal,
                             CreateNoWindow = false,
@@ -490,6 +493,12 @@ namespace WindowTopTool
 
         /// <summary>Send a raw command and return the parsed response.</summary>
         public PpcResponse SendRaw(string command)
+        {
+            lock (_ioLock)
+                return SendRawCore(command);
+        }
+
+        private PpcResponse SendRawCore(string command)
         {
             ThrowIfDisposed();
             if (_stream == null)
