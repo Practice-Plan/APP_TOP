@@ -260,15 +260,13 @@ namespace WindowTopTool
                 if (!NativeMethods.GetWindowRect(hWnd, out var rect))
                     return false;
 
-                var screen = System.Windows.Forms.Screen.FromHandle(hWnd);
-                if (screen == null)
-                    return false;
+                var (_, _, screenRight, screenBottom) = ScreenHelper.GetWorkingArea(hWnd);
 
                 // Check if window covers entire screen
                 return rect.Left <= 0 &&
                        rect.Top <= 0 &&
-                       rect.Right >= screen.Bounds.Right &&
-                       rect.Bottom >= screen.Bounds.Bottom;
+                       rect.Right >= screenRight &&
+                       rect.Bottom >= screenBottom;
             }
             catch
             {

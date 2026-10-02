@@ -1,0 +1,8 @@
+<Window
+    x:Class="WindowTopTool.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:winui="using:WindowTopTool.WinUI"
+    Title="Window Top Tool">
+    <winui:SettingsView x:Name="SettingsView" />
+</Window>

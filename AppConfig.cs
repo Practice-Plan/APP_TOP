@@ -12,11 +12,6 @@ namespace WindowTopTool
     {
         public const string ApplicationName = "WindowTopTool";
 
-        // Hotkey configuration
-        public int PinHotKeyId { get; set; } = 1;
-        public int PinHotkeyModifier { get; set; } = NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT;
-        public int PinHotkeyKey { get; set; } = (int)System.Windows.Forms.Keys.P;
-
         // Transparency configuration
         public byte DefaultOpacity { get; set; } = 200; // ~78%
         public byte MinOpacity { get; set; } = 51; // ~20%
@@ -53,32 +48,6 @@ namespace WindowTopTool
         // Feature toggles
         public bool EnableAutoHide { get; set; } = true; // Enable edge auto-hide
         public bool EnableClickThrough { get; set; } = false; // Enable mouse click-through
-
-        // --- New-style hotkey properties (used by MainForm.RegisterAllHotkeys) ---
-
-        // Toggle pin: Ctrl+Alt+P
-        public int TogglePinHotkeyModifiers { get; set; } = NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT;
-        public int TogglePinHotkeyKey { get; set; } = (int)System.Windows.Forms.Keys.P;
-
-        // Toggle topmost only: Ctrl+Alt+T
-        public int ToggleTopmostHotkeyModifiers { get; set; } = NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT;
-        public int ToggleTopmostHotkeyKey { get; set; } = (int)System.Windows.Forms.Keys.T;
-
-        // Mini window: Ctrl+Alt+M
-        public int MiniWindowHotkeyModifiers { get; set; } = NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT;
-        public int MiniWindowHotkeyKey { get; set; } = (int)System.Windows.Forms.Keys.M;
-
-        // PiP: Ctrl+Alt+Shift+P
-        public int PiPHotkeyModifiers { get; set; } = NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT | NativeMethods.MOD_SHIFT;
-        public int PiPHotkeyKey { get; set; } = (int)System.Windows.Forms.Keys.P;
-
-        // Toggle click-through: Ctrl+Alt+K
-        public int ToggleClickThroughHotkeyModifiers { get; set; } = NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT;
-        public int ToggleClickThroughHotkeyKey { get; set; } = (int)System.Windows.Forms.Keys.K;
-
-        // Unpin all: Ctrl+Alt+Shift+U
-        public int UnpinAllHotkeyModifiers { get; set; } = NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT | NativeMethods.MOD_SHIFT;
-        public int UnpinAllHotkeyKey { get; set; } = (int)System.Windows.Forms.Keys.U;
 
         // Allowed applications for pinning (empty = all applications)
         public List<string> AllowedApplications { get; set; } = new List<string>();
@@ -176,39 +145,29 @@ namespace WindowTopTool
         // in SettingsForm survives restart.
         public string Language { get; set; } = "";
 
-        // Toggle click-through hotkey
-        public int ClickThroughHotKeyId { get; set; } = 2;
-        public int ClickThroughHotkeyModifier { get; set; } = NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT;
-        public int ClickThroughHotkeyKey { get; set; } = (int)System.Windows.Forms.Keys.T;
-
-        // Mini mode hotkey
-        public int MiniModeHotKeyId { get; set; } = 3;
-        public int MiniModeHotkeyModifier { get; set; } = NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT;
-        public int MiniModeHotkeyKey { get; set; } = (int)System.Windows.Forms.Keys.M;
-
-        // Increase opacity hotkey
-        public int IncreaseOpacityHotKeyId { get; set; } = 4;
-        public int IncreaseOpacityHotkeyModifier { get; set; } = NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT;
-        public int IncreaseOpacityHotkeyKey { get; set; } = (int)System.Windows.Forms.Keys.Oemplus;
-
-        // Decrease opacity hotkey
-        public int DecreaseOpacityHotKeyId { get; set; } = 5;
-        public int DecreaseOpacityHotkeyModifier { get; set; } = NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT;
-        public int DecreaseOpacityHotkeyKey { get; set; } = (int)System.Windows.Forms.Keys.OemMinus;
+        /// <summary>
+        /// What to do when the user clicks the window's close (X) button:
+        /// "prompt" (ask each time — default), "tray" (minimize to the system
+        /// tray), or "exit" (quit the app). Set by the close dialog's
+        /// "remember my choice" checkbox.
+        /// </summary>
+        public string CloseAction { get; set; } = "prompt";
 
         private static AppConfig? _instance;
 
         /// <summary>
         /// When non-null, configuration is read from / written to this
         /// directory (typically <c>&lt;ppc_path&gt;/app/config/</c>).
-                /// When null, the default <c>%AppData%/wang.station/app/WindowTopTool/</c>
-                /// location is used.
+        /// When null, the default <c>%AppData%/wang.station/app/WindowTopTool/</c>
+        /// location is used.
         /// </summary>
-                private static string? _configDirectory;
+        private static string? _configDirectory;
 
-                public static string DefaultDataDirectory { get; } = Path.Combine(
-                        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                        "wang.station", "app", ApplicationName);
+        // Per-user data directory: %AppData%\wang.station\app\WindowTopTool
+        // (config.json lives here; AppLogger writes to <here>\logs\app.log).
+        public static string DefaultDataDirectory { get; } = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "wang.station", "app", "WindowTopTool");
 
         /// <summary>True when the config directory has been migrated to PPC.</summary>
         public static bool IsPpcConfigDirectorySet => !string.IsNullOrEmpty(_configDirectory);

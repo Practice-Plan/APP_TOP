@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
-using System.Windows.Forms;
+using System.Threading;
 
 namespace WindowTopTool
 {
@@ -14,22 +14,34 @@ namespace WindowTopTool
     public class EdgeAutoHideManager : IDisposable
     {
         private readonly WindowPinManager _pinManager;
-        private readonly System.Windows.Forms.Timer _checkTimer;
+        private readonly Timer _checkTimer;
         private readonly Dictionary<IntPtr, PiPWindow> _pipWindows = new();
         private readonly Dictionary<IntPtr, HiddenWindowState> _hiddenWindows = new();
         private readonly Dictionary<IntPtr, Point> _lastPositions = new();
         private readonly Dictionary<IntPtr, DateTime> _lastPositionTime = new();
+        private readonly object _lock = new();
         private bool _disposed = false;
         private Icon? _defaultIcon;
 
         /// <summary>Size for new PiP windows (set from AppConfig).</summary>
         public Size PiPSize { get; set; } = new Size(240, 180);
 
+        /// <summary>
+        /// Refresh PiPSize from AppConfig. Called when the user saves settings.
+        /// Existing PiP windows keep their current size — this only affects
+        /// newly created ones.
+        /// </summary>
+        public void UpdatePiPSize()
+        {
+            var config = AppConfig.Instance;
+            PiPSize = new Size(config.PiPWidth, config.PiPHeight);
+        }
+
         public EdgeAutoHideManager(WindowPinManager pinManager)
         {
             _pinManager = pinManager;
-            _checkTimer = new System.Windows.Forms.Timer { Interval = 50 }; // Check every 50ms for smoother detection
-            _checkTimer.Tick += OnCheckTimer;
+            // 使用 System.Threading.Timer（后台线程池定时器），间隔 50ms 检测
+            _checkTimer = new Timer(OnCheckTimerCallback, null, Timeout.Infinite, 50);
 
             _pinManager.WindowPinned += OnWindowPinned;
             _pinManager.WindowUnpinned += OnWindowUnpinned;
@@ -55,12 +67,12 @@ namespace WindowTopTool
 
         public void Start()
         {
-            _checkTimer.Start();
+            _checkTimer.Change(0, 50);
         }
 
         public void Stop()
         {
-            _checkTimer.Stop();
+            _checkTimer.Change(Timeout.Infinite, Timeout.Infinite);
         }
 
         /// <summary>
@@ -137,7 +149,28 @@ namespace WindowTopTool
             _lastPositionTime.Remove(e.Window.Handle);
         }
 
-        private void OnCheckTimer(object? sender, EventArgs e)
+        /// <summary>
+        /// System.Threading.Timer 回调（在 ThreadPool 线程执行）。
+        /// 使用锁保护共享集合的访问。
+        /// </summary>
+        private void OnCheckTimerCallback(object? state)
+        {
+            if (_disposed) return;
+
+            try
+            {
+                lock (_lock)
+                {
+                    OnCheckTimerCore();
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"EdgeAutoHideManager timer error: {ex.Message}");
+            }
+        }
+
+        private void OnCheckTimerCore()
         {
             // Clean up invalid windows
             var invalidHandles = _hiddenWindows.Keys
@@ -189,11 +222,11 @@ namespace WindowTopTool
                 if (isDraggingRight)
                 {
                     // Check if 2/3 of window is at right edge (use the screen the window is on)
-                    var screen = Screen.FromHandle(hWnd);
-                    if (screen == null)
+                    // 使用 ScreenHelper（MonitorFromWindow + GetMonitorInfoW）替代 System.Windows.Forms.Screen.FromHandle
+                    var workingArea = ScreenHelper.GetWorkingArea(hWnd);
+                    if (workingArea == (0, 0, 0, 0))
                         return;
 
-                    var workingArea = screen.WorkingArea;
                     var windowWidth = rect.Right - rect.Left;
 
                     // Calculate how much of the window is past the right edge
@@ -312,7 +345,9 @@ namespace WindowTopTool
         {
             if (!_disposed)
             {
-                _checkTimer.Stop();
+                _disposed = true;
+
+                _checkTimer.Change(Timeout.Infinite, Timeout.Infinite);
                 _checkTimer.Dispose();
 
                 foreach (var pipWindow in _pipWindows.Values)
@@ -323,8 +358,6 @@ namespace WindowTopTool
                 _pipWindows.Clear();
 
                 _defaultIcon?.Dispose();
-
-                _disposed = true;
             }
         }
 

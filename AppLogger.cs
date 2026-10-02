@@ -48,6 +48,27 @@ namespace WindowTopTool
         private static string? _logFilePath;
 
         /// <summary>
+        /// Optional sink invoked with the message text of every ERROR log entry.
+        /// Used to forward errors to the PPC server (WINDOW ERROR popup). Set
+        /// once at startup; exceptions from the sink are swallowed so error
+        /// forwarding can never disrupt logging, and re-entrancy is guarded.
+        /// </summary>
+        public static Action<string>? ErrorSink;
+
+        [ThreadStatic] private static bool _forwarding;
+
+        private static void Forward(string message)
+        {
+            var sink = ErrorSink;
+            if (sink == null || _forwarding || string.IsNullOrWhiteSpace(message))
+                return;
+            _forwarding = true;
+            try { sink(message); }
+            catch { /* forwarding must never disrupt logging */ }
+            finally { _forwarding = false; }
+        }
+
+        /// <summary>
         /// Push the logging configuration derived from <see cref="AppConfig"/>.
         /// Called once from <c>Program.cs</c> after the config file is loaded.
         /// Safe to call again to apply runtime changes.
@@ -157,13 +178,19 @@ namespace WindowTopTool
 
         /// <summary>Log an ERROR message, optionally tagged with a PPC error code.</summary>
         public static void Error(string message, string? errorCode = null)
-            => Write(Level.Error, errorCode == null ? message : $"{message} [code:{errorCode}]");
+        {
+            var text = errorCode == null ? message : $"{message} [code:{errorCode}]";
+            Write(Level.Error, text);
+            Forward(text);
+        }
 
         /// <summary>Log an ERROR message wrapping an exception, with optional code.</summary>
         public static void Error(string message, Exception ex, string? errorCode = null)
         {
             var suffix = errorCode == null ? "" : $" [code:{errorCode}]";
-            Write(Level.Error, $"{message}{suffix}: {ex.GetType().Name}: {ex.Message}");
+            var text = $"{message}{suffix}: {ex.GetType().Name}: {ex.Message}";
+            Write(Level.Error, text);
+            Forward(text);
         }
 
         /// <summary>Return the resolved log file path, or <c>null</c> if unavailable.</summary>

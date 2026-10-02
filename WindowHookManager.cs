@@ -2,7 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.Runtime.InteropServices;
-using System.Windows.Forms;
+using System.Threading;
 
 namespace WindowTopTool
 {
@@ -123,7 +123,7 @@ namespace WindowTopTool
         private const int MAX_ACTIVATION_RETRIES = 8;
 
         /// <summary>Delayed refresh timer — ensures the click-through state is updated correctly after a foreground change takes effect.</summary>
-        private System.Windows.Forms.Timer? _delayedRefreshTimer;
+        private System.Threading.Timer? _delayedRefreshTimer;
 
         // ── Construction and initialization ──────────────────
 
@@ -445,18 +445,13 @@ namespace WindowTopTool
         /// </summary>
         private void ScheduleDelayedRefresh(int delayMs)
         {
-            _delayedRefreshTimer?.Stop();
             _delayedRefreshTimer?.Dispose();
             _activationRetryCount = 0;
-            _delayedRefreshTimer = new System.Windows.Forms.Timer { Interval = delayMs };
-            _delayedRefreshTimer.Tick += OnDelayedRefreshTick;
-            _delayedRefreshTimer.Start();
+            _delayedRefreshTimer = new System.Threading.Timer(OnDelayedRefreshTick, null, delayMs, Timeout.Infinite);
         }
 
-        private void OnDelayedRefreshTick(object? sender, EventArgs e)
+        private void OnDelayedRefreshTick(object? state)
         {
-            _delayedRefreshTimer?.Stop();
-
             var foreground = NativeMethods.GetForegroundWindow();
             if (_activatingWindow != IntPtr.Zero
                 && foreground != _activatingWindow
@@ -467,8 +462,7 @@ namespace WindowTopTool
                 _activationRetryCount++;
                 Debug.WriteLine($"Pinned-window activation did not take effect, retrying ({_activationRetryCount}/{MAX_ACTIVATION_RETRIES})");
                 ForceSetForegroundWindow(_activatingWindow);
-                _delayedRefreshTimer!.Interval = 100;
-                _delayedRefreshTimer.Start();
+                _delayedRefreshTimer!.Change(100, Timeout.Infinite);
                 return;
             }
 
@@ -582,7 +576,7 @@ namespace WindowTopTool
                     }
                 }
 
-                _delayedRefreshTimer?.Stop();
+                _delayedRefreshTimer?.Change(Timeout.Infinite, Timeout.Infinite);
                 _delayedRefreshTimer?.Dispose();
 
                 if (_mouseHookID != IntPtr.Zero)

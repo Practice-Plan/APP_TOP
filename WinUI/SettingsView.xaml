@@ -1,0 +1,34 @@
+<UserControl
+    x:Class="WindowTopTool.WinUI.SettingsView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Microsoft.UI.Xaml.Controls">
+    <controls:NavigationView
+        x:Name="SettingsNavigationView"
+        IsBackButtonVisible="Collapsed"
+        IsPaneToggleButtonVisible="False"
+        IsSettingsVisible="False"
+        PaneDisplayMode="Left"
+        SelectionChanged="OnNavigationSelectionChanged">
+        <controls:NavigationView.MenuItems>
+            <controls:NavigationViewItem x:Name="WindowsItem" Tag="windows">
+                <controls:NavigationViewItem.Icon>
+                    <SymbolIcon Symbol="View" />
+                </controls:NavigationViewItem.Icon>
+            </controls:NavigationViewItem>
+            <controls:NavigationViewItem x:Name="GeneralItem" Tag="general">
+                <controls:NavigationViewItem.Icon>
+                    <SymbolIcon Symbol="Setting" />
+                </controls:NavigationViewItem.Icon>
+            </controls:NavigationViewItem>
+            <controls:NavigationViewItem x:Name="AboutItem" Tag="about">
+                <controls:NavigationViewItem.Icon>
+                    <SymbolIcon Symbol="Help" />
+                </controls:NavigationViewItem.Icon>
+            </controls:NavigationViewItem>
+        </controls:NavigationView.MenuItems>
+        <controls:NavigationView.Content>
+            <ContentControl x:Name="PageContent" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
+        </controls:NavigationView.Content>
+    </controls:NavigationView>
+</UserControl>

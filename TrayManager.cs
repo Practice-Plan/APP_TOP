@@ -1,410 +1,505 @@
 using System;
 using System.Drawing;
-using System.Windows.Forms;
+using System.IO;
+using System.Runtime.InteropServices;
+using Microsoft.UI.Dispatching;
 
 namespace WindowTopTool
 {
     /// <summary>
-    /// Manages system tray icon and context menu
+    /// Manages the system-tray icon and context menu using the native
+    /// <c>Shell_NotifyIconW</c> API (no WinForms dependency). A hidden
+    /// top-level Win32 window receives the tray callback messages and
+    /// forwards them onto the WinUI3 dispatcher.
     /// </summary>
-    public class TrayManager : IDisposable
+    public sealed class TrayManager : IDisposable
     {
-        private readonly NotifyIcon _notifyIcon;
-        private ContextMenuStrip _contextMenu;
-        private readonly WindowPinManager _pinManager;
-        private bool _disposed = false;
-        private Icon? _baseIcon;
+        private const int TrayIconId = 1;
+        private const int BaseMenuItemId = 1000;
 
-        public event EventHandler? ExitRequested;
-        public event EventHandler<IntPtr>? PinWindowRequested;
-        public event EventHandler? UnpinAllRequested;
+        // Menu item IDs — declared once so handlers can switch on them.
+        private const int MenuPinActive = BaseMenuItemId + 1;
+        private const int MenuWindowList = BaseMenuItemId + 2;
+        private const int MenuSettings = BaseMenuItemId + 3;
+        private const int MenuUnpinAll = BaseMenuItemId + 4;
+        private const int MenuExit = BaseMenuItemId + 5;
+
+        private readonly WindowPinManager _pinManager;
+        private readonly DispatcherQueue _dispatcher;
+        private IntPtr _trayWindow;
+        private IntPtr _hIcon;
+        private bool _iconAdded;
+        private bool _disposed;
+
         public event EventHandler? SettingsRequested;
+        public event EventHandler? ExitRequested;
 
         public TrayManager(WindowPinManager pinManager)
         {
-            _pinManager = pinManager;
-            _baseIcon = LoadIconFromFile();
-            _contextMenu = CreateContextMenu();
-            _notifyIcon = CreateNotifyIcon();
-
+            _pinManager = pinManager ?? throw new ArgumentNullException(nameof(pinManager));
+            _dispatcher = DispatcherQueue.GetForCurrentThread();
             _pinManager.WindowsChanged += OnWindowsChanged;
             LocalizationManager.LanguageChanged += OnLanguageChanged;
-            UpdateTrayIcon();
+
+            CreateTrayWindow();
+            LoadIcon();
+            RegisterTrayIcon();
         }
 
-        private void OnLanguageChanged(object? sender, EventArgs e)
+        // ──────────────────────────────────────────────────────
+        // Hidden tray message window
+        // ──────────────────────────────────────────────────────
+
+        private static IntPtr _windowClassAtom;
+
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        private delegate IntPtr WndProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+        private static readonly WndProcDelegate _trayWindowProcDelegate = TrayWindowProc;
+
+        private static IntPtr RegisterWindowClass()
         {
-            // Rebuild the context menu so item labels follow the new language.
-            var oldMenu = _contextMenu;
-            oldMenu.Items.Clear();
-            oldMenu.Dispose();
-            _contextMenu = CreateContextMenu();
-            _notifyIcon.ContextMenuStrip = _contextMenu;
-            UpdateTrayIcon();
-        }
+            if (_windowClassAtom != IntPtr.Zero) return _windowClassAtom;
 
-        private ContextMenuStrip CreateContextMenu()
-        {
-            var menu = new ContextMenuStrip();
-
-            // Pin current active window
-            var pinActiveItem = new ToolStripMenuItem(LocalizationManager.GetString("Tray_PinActiveWindow"));
-            pinActiveItem.Click += (s, e) => PinCurrentActiveWindow();
-            menu.Items.Add(pinActiveItem);
-
-            // Separator
-            menu.Items.Add(new ToolStripSeparator());
-
-            // Window Pin Options
-            var pinOptionsItem = new ToolStripMenuItem(LocalizationManager.GetString("Tray_WindowPinOptions"));
-            pinOptionsItem.Click += (s, e) => ShowWindowPinMenu();
-            menu.Items.Add(pinOptionsItem);
-
-            // Separator
-            menu.Items.Add(new ToolStripSeparator());
-
-            // Settings
-            var settingsItem = new ToolStripMenuItem(LocalizationManager.GetString("Tray_Settings"));
-            settingsItem.Click += (s, e) => SettingsRequested?.Invoke(this, EventArgs.Empty);
-            menu.Items.Add(settingsItem);
-
-            // Unpin all
-            var unpinAllItem = new ToolStripMenuItem(LocalizationManager.GetString("Tray_UnpinAll"));
-            unpinAllItem.Click += (s, e) => UnpinAllRequested?.Invoke(this, EventArgs.Empty);
-            menu.Items.Add(unpinAllItem);
-
-            // Separator
-            menu.Items.Add(new ToolStripSeparator());
-
-            // Exit
-            var exitItem = new ToolStripMenuItem(LocalizationManager.GetString("Tray_Exit"));
-            exitItem.Click += (s, e) => ExitRequested?.Invoke(this, EventArgs.Empty);
-            menu.Items.Add(exitItem);
-
-            return menu;
-        }
-
-        private NotifyIcon CreateNotifyIcon()
-        {
-            var icon = new NotifyIcon
+            var hInstance = NativeMethods.GetModuleHandle(null);
+            var wc = new NativeMethods.WNDCLASSEXW
             {
-                Icon = _baseIcon ?? CreateDefaultIcon(),
-                Text = AppConfig.AppDisplayName,
-                Visible = true,
-                ContextMenuStrip = _contextMenu
+                cbSize = Marshal.SizeOf(typeof(NativeMethods.WNDCLASSEXW)),
+                lpfnWndProc = Marshal.GetFunctionPointerForDelegate(_trayWindowProcDelegate),
+                hInstance = hInstance,
+                lpszClassName = "WindowTopTool.TrayMessageWindow"
             };
+            var registered = NativeMethods.RegisterClassExW(ref wc);
+            if (!registered)
+                AppLogger.Warn($"RegisterClassExW failed: {Marshal.GetLastWin32Error()}");
+            _windowClassAtom = registered ? new IntPtr(1) : IntPtr.Zero;
+            return _windowClassAtom;
+        }
 
-            // Left click shows settings
-            icon.Click += (s, e) =>
+        private void CreateTrayWindow()
+        {
+            RegisterWindowClass();
+            var hInstance = NativeMethods.GetModuleHandle(null);
+            _trayWindow = NativeMethods.CreateWindowExW(
+                0, "WindowTopTool.TrayMessageWindow",
+                "WindowTopTool Tray", 0,
+                0, 0, 0, 0,
+                IntPtr.Zero, IntPtr.Zero, hInstance, IntPtr.Zero);
+
+            if (_trayWindow == IntPtr.Zero)
             {
-                if (((MouseEventArgs)e).Button == MouseButtons.Left)
+                AppLogger.Error("Failed to create tray message window");
+            }
+        }
+
+        private static IntPtr TrayWindowProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
+        {
+            if (msg == NativeMethods.WM_TRAYICON)
+            {
+                var lParamValue = lParam.ToInt64();
+                var mouseMsg = (int)(lParamValue & 0xFFFF);
+                switch (mouseMsg)
                 {
-                    SettingsRequested?.Invoke(this, EventArgs.Empty);
+                    case 0x0200: // WM_MOUSEMOVE
+                    case 0x0204: // WM_RBUTTONDOWN
+                    case 0x0205: // WM_RBUTTONUP
+                    case 0x0206: // WM_RBUTTONDBLCLK
+                        break;
+                    case 0x0201: // WM_LBUTTONDOWN
+                    case 0x0202: // WM_LBUTTONUP
+                        break;
+                    case 0x0203: // WM_LBUTTONDBLCLK
+                        TrayManagerRegistry.Get(hWnd)?.HandleTrayLeftDoubleClick();
+                        return IntPtr.Zero;
+                    case 0x0208: // WM_MBUTTONUP — ignore
+                        break;
+                    default:
+                        break;
                 }
-            };
 
-            // Double click shows window pin menu
-            icon.DoubleClick += (s, e) => ShowWindowPinMenu();
+                if (mouseMsg == 0x0205) // WM_RBUTTONUP — show context menu on right-click release
+                {
+                    TrayManagerRegistry.Get(hWnd)?.ShowContextMenu();
+                }
+                return IntPtr.Zero;
+            }
 
-            return icon;
+            if (msg == NativeMethods.WM_COMMAND)
+            {
+                var commandId = wParam.ToInt32() & 0xFFFF;
+                TrayManagerRegistry.Get(hWnd)?.HandleMenuCommand(commandId);
+                return IntPtr.Zero;
+            }
+
+            if (msg == NativeMethods.WM_DESTROY)
+            {
+                TrayManagerRegistry.Remove(hWnd);
+                return IntPtr.Zero;
+            }
+
+            return NativeMethods.DefWindowProcW(hWnd, msg, wParam, lParam);
         }
 
-        /// <summary>
-        /// Pin the current active foreground window
-        /// </summary>
-        private void PinCurrentActiveWindow()
+        // ──────────────────────────────────────────────────────
+        // Icon loading & registration
+        // ──────────────────────────────────────────────────────
+
+        private void LoadIcon()
         {
             try
             {
-                // Get current foreground window
-                var activeWindow = NativeMethods.GetForegroundWindow();
-
-                if (activeWindow == IntPtr.Zero)
+                var iconPath = Path.Combine(AppContext.BaseDirectory, "icon.ico");
+                if (File.Exists(iconPath))
                 {
-                    ShowNotification(
-                        LocalizationManager.GetString("Tray_OperationFailed"),
-                        LocalizationManager.GetString("Tray_NoActiveWindow"),
-                        ToolTipIcon.Warning);
-                    return;
-                }
-
-                // Check if already pinned
-                if (_pinManager.IsPinned(activeWindow))
-                {
-                    // Unpin it
-                    var title = GetWindowTitle(activeWindow);
-                    _pinManager.UnpinWindow(activeWindow);
-                    ShowNotification(
-                        LocalizationManager.GetString("Tray_Unpinned"),
-                        string.IsNullOrEmpty(title) ? LocalizationManager.GetString("Tray_UnnamedWindow") : title,
-                        ToolTipIcon.Info);
-                }
-                else
-                {
-                    // Pin it
-                    var result = _pinManager.PinWindow(activeWindow);
-
-                    if (result)
-                    {
-                        var title = GetWindowTitle(activeWindow);
-                        ShowNotification(
-                            LocalizationManager.GetString("Tray_Pinned"),
-                            string.IsNullOrEmpty(title) ? LocalizationManager.GetString("Tray_UnnamedWindow") : title,
-                            ToolTipIcon.Info);
-                    }
-                    else
-                    {
-                        ShowNotification(
-                            LocalizationManager.GetString("Tray_CannotPin"),
-                            LocalizationManager.GetString("Tray_CannotPinBody"),
-                            ToolTipIcon.Warning);
-                    }
+                    using var fileStream = new FileStream(iconPath, FileMode.Open, FileAccess.Read);
+                    var icon = new Icon(fileStream);
+                    _hIcon = icon.Handle;
+                    // Icon becomes owned by the tray — do not dispose the managed wrapper.
+                    GC.SuppressFinalize(icon);
                 }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error pinning active window: {ex.Message}");
-                ShowNotification(
-                    LocalizationManager.GetString("Tray_OperationError"),
-                    LocalizationManager.GetString("Tray_OperationErrorBody"),
-                    ToolTipIcon.Error);
+                AppLogger.Warn($"Could not load tray icon from file: {ex.Message}");
+            }
+
+            if (_hIcon == IntPtr.Zero)
+            {
+                _hIcon = CreateFallbackIcon();
             }
         }
 
-        /// <summary>
-        /// Show window pin menu with all available windows
-        /// </summary>
-        private void ShowWindowPinMenu()
+        private static IntPtr CreateFallbackIcon()
         {
-            var menu = new ContextMenuStrip();
+            using var bmp = new Bitmap(32, 32);
+            using var g = Graphics.FromImage(bmp);
+            g.Clear(Color.Transparent);
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            using var pen = new Pen(Color.FromArgb(120, 120, 130), 2.5f);
+            g.DrawEllipse(pen, 7, 5, 18, 18);
+            g.DrawLine(pen, 16, 23, 16, 30);
+            using var highlightPen = new Pen(Color.FromArgb(160, 160, 170), 1f);
+            g.DrawEllipse(highlightPen, 10, 8, 12, 12);
+            var hIcon = bmp.GetHicon();
+            return hIcon;
+        }
 
-            // Add header
-            var headerItem = new ToolStripLabel(LocalizationManager.GetString("Tray_SelectWindowHeader"))
+        private void RegisterTrayIcon()
+        {
+            if (_trayWindow == IntPtr.Zero) return;
+
+            TrayManagerRegistry.Register(_trayWindow, this);
+
+            var data = new NativeMethods.NOTIFYICONDATAW
             {
-                Enabled = false,
-                Font = new Font(menu.Font, FontStyle.Bold)
+                cbSize = Marshal.SizeOf(typeof(NativeMethods.NOTIFYICONDATAW)),
+                hWnd = _trayWindow,
+                uID = TrayIconId,
+                uFlags = NativeMethods.NIF_MESSAGE | NativeMethods.NIF_ICON | NativeMethods.NIF_TIP | NativeMethods.NIF_SHOWTIP,
+                uCallbackMessage = NativeMethods.WM_TRAYICON,
+                hIcon = _hIcon,
+                szTip = AppConfig.AppDisplayName,
+                uVersion = NativeMethods.NOTIFYICON_VERSION_4
             };
-            menu.Items.Add(headerItem);
-            menu.Items.Add(new ToolStripSeparator());
 
-            // Add currently pinned windows
-            if (_pinManager.PinnedCount > 0)
+            if (NativeMethods.Shell_NotifyIconW(NativeMethods.NIM_ADD, ref data))
             {
-                var pinnedHeader = new ToolStripLabel(LocalizationManager.GetString("Tray_PinnedHeader"))
-                {
-                    Enabled = false,
-                    ForeColor = Color.Green
-                };
-                menu.Items.Add(pinnedHeader);
-
-                foreach (var window in _pinManager.PinnedWindows)
-                {
-                    var item = new ToolStripMenuItem(window.Title)
-                    {
-                        Checked = true,
-                        CheckState = CheckState.Checked
-                    };
-                    var hWnd = window.Handle;
-                    item.Click += (s, e) => PinWindowRequested?.Invoke(this, hWnd);
-                    menu.Items.Add(item);
-                }
-                menu.Items.Add(new ToolStripSeparator());
-            }
-
-            // Add currently open windows
-            var openWindowsHeader = new ToolStripLabel(LocalizationManager.GetString("Tray_OpenWindowsHeader"))
-            {
-                Enabled = false,
-                ForeColor = Color.Blue
-            };
-            menu.Items.Add(openWindowsHeader);
-
-            // Titles that belong to this application and must be hidden from
-            // the window list. The settings form title is localized, so compare
-            // against the current localized value.
-            var settingsTitle = LocalizationManager.GetString("Settings_FormTitle");
-
-            // Enumerate all visible windows
-            NativeMethods.EnumWindows((hWnd, lParam) =>
-            {
-                // Validate window before adding to menu
-                if (WindowValidator.IsValidWindow(hWnd))
-                {
-                    var title = GetWindowTitle(hWnd);
-                    if (!string.IsNullOrEmpty(title) && title != AppConfig.AppDisplayName && title != settingsTitle)
-                    {
-                        var isPinned = _pinManager.IsPinned(hWnd);
-                        var item = new ToolStripMenuItem(title)
-                        {
-                            Checked = isPinned
-                        };
-                        var capturedHWnd = hWnd;
-                        item.Click += (s, e) => _pinManager.TogglePin(capturedHWnd);
-                        menu.Items.Add(item);
-                    }
-                }
-                return true;
-            }, IntPtr.Zero);
-
-            // Show menu at cursor position
-            menu.Show(Cursor.Position);
-        }
-
-        /// <summary>
-        /// Get window title from handle
-        /// </summary>
-        private string GetWindowTitle(IntPtr hWnd)
-        {
-            var length = NativeMethods.GetWindowTextLength(hWnd);
-            if (length == 0)
-                return string.Empty;
-
-            var builder = new System.Text.StringBuilder(length + 1);
-            NativeMethods.GetWindowText(hWnd, builder, builder.Capacity);
-            return builder.ToString();
-        }
-
-        /// <summary>
-        /// Try to load icon from icon.ico file
-        /// </summary>
-        private Icon? LoadIconFromFile()
-        {
-            try
-            {
-                var iconPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "icon.ico");
-                if (System.IO.File.Exists(iconPath))
-                {
-                    return new Icon(iconPath);
-                }
-            }
-            catch
-            {
-                // Ignore icon loading errors
-            }
-            return null;
-        }
-
-        /// <summary>
-        /// Update tray icon based on pinned windows count
-        /// </summary>
-        private void UpdateTrayIcon()
-        {
-            var count = _pinManager.PinnedCount;
-
-            if (_baseIcon != null)
-            {
-                _notifyIcon.Icon = count > 0 ? CreateActiveIcon(count, _baseIcon) : _baseIcon;
+                _iconAdded = true;
+                // Update to v4 so we get richer mouse messages.
+                NativeMethods.Shell_NotifyIconW(NativeMethods.NIM_SETVERSION, ref data);
             }
             else
             {
-                _notifyIcon.Icon = count > 0 ? CreateActiveIcon(count, CreateDefaultIcon()) : CreateDefaultIcon();
+                AppLogger.Error($"Shell_NotifyIconW(NIM_ADD) failed: {Marshal.GetLastWin32Error()}");
             }
-
-            _notifyIcon.Text = count > 0 ? $"{AppConfig.AppDisplayName} ({count} pinned)" : AppConfig.AppDisplayName;
         }
 
-        private void OnWindowsChanged(object? sender, EventArgs e)
+        private void UpdateTrayIcon()
         {
+            if (!_iconAdded) return;
+
+            var count = _pinManager.PinnedCount;
+            var tip = count > 0
+                ? $"{AppConfig.AppDisplayName} ({count} pinned)"
+                : AppConfig.AppDisplayName;
+
+            var data = new NativeMethods.NOTIFYICONDATAW
+            {
+                cbSize = Marshal.SizeOf(typeof(NativeMethods.NOTIFYICONDATAW)),
+                hWnd = _trayWindow,
+                uID = TrayIconId,
+                uFlags = NativeMethods.NIF_TIP,
+                szTip = tip
+            };
+            NativeMethods.Shell_NotifyIconW(NativeMethods.NIM_MODIFY, ref data);
+        }
+
+        // ──────────────────────────────────────────────────────
+        // Context menu (dynamically rebuilt each time so labels
+        // always reflect the current locale and pinned-window list)
+        // ──────────────────────────────────────────────────────
+
+        private void ShowContextMenu()
+        {
+            if (_trayWindow == IntPtr.Zero) return;
+            var hMenu = NativeMethods.CreatePopupMenu();
+            if (hMenu == IntPtr.Zero) return;
+
+            try
+            {
+                Append(hMenu, MenuPinActive, LocalizationManager.GetString("Tray_PinActiveWindow"));
+                NativeMethods.AppendMenuW(hMenu, NativeMethods.MF_SEPARATOR, IntPtr.Zero, null);
+                Append(hMenu, MenuWindowList, LocalizationManager.GetString("Tray_WindowPinOptions"));
+                NativeMethods.AppendMenuW(hMenu, NativeMethods.MF_SEPARATOR, IntPtr.Zero, null);
+                Append(hMenu, MenuSettings, LocalizationManager.GetString("Tray_Settings"));
+                Append(hMenu, MenuUnpinAll, LocalizationManager.GetString("Tray_UnpinAll"));
+                NativeMethods.AppendMenuW(hMenu, NativeMethods.MF_SEPARATOR, IntPtr.Zero, null);
+                Append(hMenu, MenuExit, LocalizationManager.GetString("Tray_Exit"));
+
+                NativeMethods.GetCursorPos(out var pt);
+                NativeMethods.SetForegroundWindow(_trayWindow);
+                NativeMethods.TrackPopupMenu(
+                    hMenu,
+                    NativeMethods.TPM_LEFTALIGN | NativeMethods.TPM_BOTTOMALIGN,
+                    pt.X, pt.Y, 0, _trayWindow, IntPtr.Zero);
+                NativeMethods.PostMessageW(_trayWindow, NativeMethods.WM_NULL, IntPtr.Zero, IntPtr.Zero);
+            }
+            finally
+            {
+                NativeMethods.DestroyMenu(hMenu);
+            }
+        }
+
+        private static void Append(IntPtr hMenu, int id, string text)
+        {
+            NativeMethods.AppendMenuW(hMenu, NativeMethods.MF_STRING, new IntPtr(id), text);
+        }
+
+        private void HandleTrayLeftDoubleClick()
+        {
+            RunOnUiThread(() => SettingsRequested?.Invoke(this, EventArgs.Empty));
+        }
+
+        private void HandleMenuCommand(int commandId)
+        {
+            switch (commandId)
+            {
+                case MenuPinActive:
+                    RunOnUiThread(() => PinCurrentActiveWindow());
+                    break;
+                case MenuWindowList:
+                    RunOnUiThread(() => ShowWindowPinPicker());
+                    break;
+                case MenuSettings:
+                    RunOnUiThread(() => SettingsRequested?.Invoke(this, EventArgs.Empty));
+                    break;
+                case MenuUnpinAll:
+                    RunOnUiThread(() =>
+                    {
+                        _pinManager.UnpinAll();
+                        ShowNotification(
+                            LocalizationManager.GetString("Main_UnpinAllTitle"),
+                            LocalizationManager.GetString("Main_UnpinAllBody"));
+                    });
+                    break;
+                case MenuExit:
+                    RunOnUiThread(() => ExitRequested?.Invoke(this, EventArgs.Empty));
+                    break;
+            }
+        }
+
+        private void RunOnUiThread(Action action)
+        {
+            if (_dispatcher.HasThreadAccess)
+            {
+                try { action(); }
+                catch (Exception ex) { AppLogger.Error("Tray command failed", ex); }
+            }
+            else
+            {
+                _dispatcher.TryEnqueue(() =>
+                {
+                    try { action(); }
+                    catch (Exception ex) { AppLogger.Error("Tray command failed", ex); }
+                });
+            }
+        }
+
+        // ──────────────────────────────────────────────────────
+        // Pin-current-window helper
+        // ──────────────────────────────────────────────────────
+
+        private void PinCurrentActiveWindow()
+        {
+            try
+            {
+                var hWnd = NativeMethods.GetForegroundWindow();
+                if (hWnd == IntPtr.Zero)
+                {
+                    ShowNotification(LocalizationManager.GetString("Tray_OperationFailed"),
+                        LocalizationManager.GetString("Tray_NoActiveWindow"), NIIF_WARNING);
+                    return;
+                }
+
+                if (_pinManager.IsPinned(hWnd))
+                {
+                    var title = GetWindowTitle(hWnd);
+                    _pinManager.UnpinWindow(hWnd);
+                    ShowNotification(LocalizationManager.GetString("Tray_Unpinned"),
+                        string.IsNullOrEmpty(title) ? LocalizationManager.GetString("Tray_UnnamedWindow") : title);
+                }
+                else
+                {
+                    var ok = _pinManager.PinWindow(hWnd);
+                    var title = GetWindowTitle(hWnd);
+                    if (ok)
+                        ShowNotification(LocalizationManager.GetString("Tray_Pinned"),
+                            string.IsNullOrEmpty(title) ? LocalizationManager.GetString("Tray_UnnamedWindow") : title);
+                    else
+                        ShowNotification(LocalizationManager.GetString("Tray_CannotPin"),
+                            LocalizationManager.GetString("Tray_CannotPinBody"), NIIF_WARNING);
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("Failed to pin active window from tray", ex);
+                ShowNotification(LocalizationManager.GetString("Tray_OperationError"),
+                    LocalizationManager.GetString("Tray_OperationErrorBody"), NIIF_ERROR);
+            }
+        }
+
+        private void ShowWindowPinPicker()
+        {
+            // This previously spawned a dynamic WinForms ContextMenuStrip.
+            // In the pure WinUI3 world we hand off to the main settings
+            // window — it exposes the same window list via SettingsView.
+            SettingsRequested?.Invoke(this, EventArgs.Empty);
+        }
+
+        private static string GetWindowTitle(IntPtr hWnd)
+        {
+            var len = NativeMethods.GetWindowTextLength(hWnd);
+            if (len <= 0) return string.Empty;
+            var sb = new System.Text.StringBuilder(len + 1);
+            NativeMethods.GetWindowText(hWnd, sb, sb.Capacity);
+            return sb.ToString();
+        }
+
+        // ──────────────────────────────────────────────────────
+        // Bubble notification (Shell_NotifyIcon with NIF_INFO)
+        // ──────────────────────────────────────────────────────
+
+        public const int NIIF_NONE = 0x00000000;
+        public const int NIIF_WARNING = 0x00000002;
+        public const int NIIF_ERROR = 0x00000003;
+        public const int NIIF_INFO = 0x00000001;
+
+        public void ShowNotification(string title, string message, int icon = NIIF_INFO)
+        {
+            var config = AppConfig.Instance;
+
+            // Respect user preferences at the tray-manager level — callers
+            // (e.g. WindowPinManager) no longer need to re-check.
+            if (!config.ShowNotifications) return;
+            if (icon == NIIF_INFO && !config.ShowPinNotifications) return;
+            if ((icon == NIIF_ERROR || icon == NIIF_WARNING) && !config.ShowErrorNotifications) return;
+
+            if (!_iconAdded || _trayWindow == IntPtr.Zero) return;
+
+            // Clamp lengths — Shell_NotifyIcon rejects strings that exceed
+            // the struct sizes (szInfo 256, szInfoTitle 64).
+            if (message.Length > 255) message = message[..255];
+            if (title.Length > 63) title = title[..63];
+
+            var data = new NativeMethods.NOTIFYICONDATAW
+            {
+                cbSize = Marshal.SizeOf(typeof(NativeMethods.NOTIFYICONDATAW)),
+                hWnd = _trayWindow,
+                uID = TrayIconId,
+                uFlags = NativeMethods.NIF_INFO,
+                szInfo = message,
+                szInfoTitle = title,
+                dwInfoFlags = icon,
+                uVersion = NativeMethods.NOTIFYICON_VERSION_4
+            };
+
+            if (!NativeMethods.Shell_NotifyIconW(NativeMethods.NIM_MODIFY, ref data))
+            {
+                AppLogger.Warn($"Tray bubble failed: {Marshal.GetLastWin32Error()}");
+            }
+        }
+
+        // ──────────────────────────────────────────────────────
+        // Event plumbing
+        // ──────────────────────────────────────────────────────
+
+        private void OnWindowsChanged(object? sender, EventArgs e) => UpdateTrayIcon();
+
+        private void OnLanguageChanged(object? sender, EventArgs e)
+        {
+            // Tip text depends on localized product name and pinned count.
             UpdateTrayIcon();
         }
 
-        /// <summary>
-        /// Show balloon notification
-        /// </summary>
-        public void ShowNotification(string title, string message, ToolTipIcon icon = ToolTipIcon.Info)
-        {
-            // Check if notifications are enabled
-            if (!AppConfig.Instance.ShowNotifications)
-                return;
-
-            // Check specific notification type
-            if (icon == ToolTipIcon.Info && !AppConfig.Instance.ShowPinNotifications)
-                return;
-
-            if ((icon == ToolTipIcon.Error || icon == ToolTipIcon.Warning) && !AppConfig.Instance.ShowErrorNotifications)
-                return;
-
-            _notifyIcon.ShowBalloonTip(AppConfig.Instance.TooltipDuration, title, message, icon);
-        }
-
-        /// <summary>
-        /// Create default icon (gray pin)
-        /// </summary>
-        private Icon CreateDefaultIcon()
-        {
-            using var bitmap = new Bitmap(32, 32);
-            using var graphics = Graphics.FromImage(bitmap);
-
-            graphics.Clear(Color.Transparent);
-            graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-
-            // Draw modern pin icon - circle with stem
-            using var pen = new Pen(Color.FromArgb(120, 120, 130), 2.5f);
-            var rect = new Rectangle(7, 5, 18, 18);
-            graphics.DrawEllipse(pen, rect);
-
-            // Draw stem
-            graphics.DrawLine(pen, 16, 23, 16, 30);
-
-            // Draw inner highlight
-            using var highlightPen = new Pen(Color.FromArgb(160, 160, 170), 1f);
-            graphics.DrawEllipse(highlightPen, 10, 8, 12, 12);
-
-            var hIcon = bitmap.GetHicon();
-            return Icon.FromHandle(hIcon);
-        }
-
-        /// <summary>
-        /// Create active icon (with count badge)
-        /// </summary>
-        private Icon CreateActiveIcon(int count, Icon baseIcon)
-        {
-            using var bitmap = new Bitmap(32, 32);
-            using var graphics = Graphics.FromImage(bitmap);
-
-            graphics.Clear(Color.Transparent);
-            graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-
-            // Draw base icon
-            graphics.DrawIcon(baseIcon, 0, 0);
-
-            // Draw count badge with modern style
-            var badgeRect = new Rectangle(18, 18, 14, 14);
-            using var badgeBrush = new SolidBrush(Color.FromArgb(46, 204, 113));
-            graphics.FillEllipse(badgeBrush, badgeRect);
-
-            // Badge border
-            using var badgePen = new Pen(Color.White, 1.5f);
-            graphics.DrawEllipse(badgePen, badgeRect);
-
-            // Draw count text
-            using var font = new Font("Arial", 7, FontStyle.Bold);
-            using var format = new StringFormat
-            {
-                Alignment = StringAlignment.Center,
-                LineAlignment = StringAlignment.Center
-            };
-            // Position text in center of badge
-            var textPos = new RectangleF(badgeRect.X, badgeRect.Y, badgeRect.Width, badgeRect.Height);
-            graphics.DrawString(count.ToString(), font, Brushes.White, textPos, format);
-
-            var hIcon = bitmap.GetHicon();
-            return Icon.FromHandle(hIcon);
-        }
+        // ──────────────────────────────────────────────────────
+        // Dispose
+        // ──────────────────────────────────────────────────────
 
         public void Dispose()
         {
-            if (!_disposed)
+            if (_disposed) return;
+            _disposed = true;
+
+            _pinManager.WindowsChanged -= OnWindowsChanged;
+            LocalizationManager.LanguageChanged -= OnLanguageChanged;
+
+            try
             {
-                LocalizationManager.LanguageChanged -= OnLanguageChanged;
-                _notifyIcon.Visible = false;
-                _notifyIcon.Dispose();
-                _contextMenu.Dispose();
-                _baseIcon?.Dispose();
-                _disposed = true;
+                if (_iconAdded)
+                {
+                    var data = new NativeMethods.NOTIFYICONDATAW
+                    {
+                        cbSize = Marshal.SizeOf(typeof(NativeMethods.NOTIFYICONDATAW)),
+                        hWnd = _trayWindow,
+                        uID = TrayIconId
+                    };
+                    NativeMethods.Shell_NotifyIconW(NativeMethods.NIM_DELETE, ref data);
+                    _iconAdded = false;
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("Tray icon unregistration failed", ex);
+            }
+
+            if (_trayWindow != IntPtr.Zero)
+            {
+                NativeMethods.DestroyWindow(_trayWindow);
+                _trayWindow = IntPtr.Zero;
+            }
+
+            if (_hIcon != IntPtr.Zero)
+            {
+                NativeMethods.DestroyIcon(_hIcon);
+                _hIcon = IntPtr.Zero;
             }
         }
+    }
+
+    // ─── WNDCLASSEX alias for backward compatibility (NativeMethods.WNDCLASSEXW is canonical) ─
+
+    /// <summary>
+    /// Weak map between the tray window handle and the owning TrayManager
+    /// instance. The static callback needs to find its way back to the
+    /// managed object that owns that window — this is the safest way to do
+    /// it without leaking GCHandles.
+    /// </summary>
+    internal static class TrayManagerRegistry
+    {
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<IntPtr, TrayManager> _map = new();
+
+        public static void Register(IntPtr hWnd, TrayManager manager) => _map[hWnd] = manager;
+        public static TrayManager? Get(IntPtr hWnd) => _map.TryGetValue(hWnd, out var m) ? m : null;
+        public static void Remove(IntPtr hWnd) => _map.TryRemove(hWnd, out _);
     }
 }
